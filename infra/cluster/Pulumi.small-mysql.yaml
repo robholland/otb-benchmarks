@@ -20,7 +20,7 @@ config:
       WorkflowPollers: 100
       ActivityPollers: 150
     SoakTest:
-      ConcurrentWorkflows: 10
+      ConcurrentWorkflows: 6 
       Pods: 1
       CPU:
         Request: 0.25
