@@ -1,0 +1,6 @@
+encryptionsalt: v1:k1dSUbFLUI0=:v1:yMtK14U2xOgb58et:eo7jkMQ1vYroGFvQC/Ky97jgSznSyg==
+config:
+  aws:region: us-west-2
+  aws:defaultTags:
+    tags:
+      project: temporal-otb-benchmarks

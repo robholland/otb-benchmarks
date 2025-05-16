@@ -1,0 +1,3 @@
+name: temporal-otb-benchmarks-environment
+runtime: nodejs
+description: Temporal benchmarks environment
