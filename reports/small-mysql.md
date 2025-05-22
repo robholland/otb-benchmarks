@@ -7,9 +7,9 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Cost/Node | Monthly Cost |
 |------|--------------|------------|-----------|-------------|
-| small-mysql-temporal-81f7665 | m5.2xlarge | 1 | $72.00 | $72.00 |
-| small-mysql-worker-a7a82f1 | m5.large | 1 | $72.00 | $72.00 |
-| small-mysql-e6ad64a | m5.2xlarge | 1 | $72.00 | $72.00 |
+| small-mysql-worker | m5.large | 1 | $72.00 | $72.00 |
+| small-mysql-temporal | m5.2xlarge | 1 | $72.00 | $72.00 |
+| small-mysql | m5.2xlarge | 1 | $72.00 | $72.00 |
 
 - **Total EKS Monthly Cost:** $216.00
 

@@ -122,9 +122,8 @@ new PolicyPack("pricing", {
                 for (const [urn, resource] of Object.entries(args.resources)) {
                     switch (resource.type) {
                         case "eks:index/cluster:Cluster":
-                            const cluster = resource.props;
                             resourceInfo.eksCluster = {
-                                name: cluster.name || "eks-cluster",
+                                name: resource.name,
                             };
                             break;
                             
@@ -142,7 +141,7 @@ new PolicyPack("pricing", {
                             
                             // Store the node group info for reporting
                             resourceInfo.nodeGroups.push({
-                                name: asg.name || urn.split('/').pop() || "unnamed-node-group",
+                                name: resource.name,
                                 instanceType,
                                 nodeCount,
                             });
@@ -151,7 +150,7 @@ new PolicyPack("pricing", {
                         case "aws:rds/instance:Instance":
                             const rdsInstance = resource.props;
                             resourceInfo.rdsInstances.push({
-                                name: urn.split('/').pop() || "unnamed-rds",
+                                name: resource.name,
                                 instanceClass: rdsInstance.instanceClass || "db.t3.medium",
                                 storageGB: rdsInstance.allocatedStorage || 20,
                                 engine: rdsInstance.engine,
