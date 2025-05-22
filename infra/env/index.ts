@@ -2,7 +2,7 @@ import * as aws from "@pulumi/aws";
 import * as awsx from "@pulumi/awsx";
 import * as pulumi from "@pulumi/pulumi";
 
-const azCount = 2;
+const azCount = 3;
 
 const vpc = new awsx.ec2.Vpc("temporal-benchmark", {
     numberOfAvailabilityZones: azCount

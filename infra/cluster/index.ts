@@ -2,126 +2,10 @@ import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 import * as eks from "@pulumi/eks";
 import * as k8s from "@pulumi/kubernetes";
+import { AWSConfig, BenchmarkConfig, ClusterConfig, PersistenceConfig, TemporalConfig, Cluster, EKSClusterConfig, RDSPersistenceConfig, CassandraPersistenceConfig, OpenSearchConfig } from "./types";
 
 let config = new pulumi.Config();
 const awsConfig = config.requireObject<AWSConfig>('AWS');
-
-interface AWSConfig {
-    Region: string;
-    VpcId: string;
-    Role: string;
-    RdsSubnetGroupName: string;
-    PrivateSubnetIds: string[];
-    AvailabilityZones: string[];
-}
-
-interface TemporalConfig {
-    DynamicConfig: Object;
-    Frontend: FrontendConfig;
-    History: HistoryConfig;
-    Matching: MatchingConfig;
-    Worker: WorkerConfig;
-}
-
-interface BenchmarkConfig {
-    Workers: WorkerConfig;
-    SoakTest: SoakTestConfig;
-}
-
-interface FrontendConfig {
-    Pods: number;
-    CPU: CPULimits;
-    Memory: MemoryLimits;
-}
-
-interface HistoryConfig {
-    Shards: number;
-    Pods: number;
-    CPU: CPULimits;
-    Memory: MemoryLimits;
-}
-
-interface MatchingConfig {
-    Pods: number;
-    CPU: CPULimits;
-    Memory: MemoryLimits;
-}
-
-interface CPULimits {
-    Request: string;
-}
-
-interface MemoryLimits {
-    Request: string;
-}
-
-interface WorkerConfig {
-    Pods: number;
-    WorkflowPollers: number;
-    ActivityPollers: number;
-    CPU: CPULimits;
-    Memory: MemoryLimits;
-}
-
-interface SoakTestConfig {
-    Pods: number;
-    CPU: CPULimits;
-    Memory: MemoryLimits;
-    ConcurrentWorkflows: number;
-}
-
-interface Cluster {
-    name: pulumi.Output<string>;
-    kubeconfig: pulumi.Output<any>;
-    provider: k8s.Provider;
-    securityGroup: pulumi.Output<string>;
-    instanceRoles: pulumi.Output<aws.iam.Role[]>;
-}
-
-interface EKSClusterConfig {
-    EnvironmentStackName: string;
-    NodeType: string;
-    NodeCount: number;
-    TemporalNodeType: string;
-    TemporalNodeCount: number;
-    WorkerNodeType: string;
-    WorkerNodeCount: number;
-}
-
-interface ClusterConfig {
-    HostedMetrics: boolean;
-    EKS: EKSClusterConfig | undefined;
-}
-
-interface VisibilityConfig {
-    OpenSearch: OpenSearchConfig | undefined;
-}
-
-interface PersistenceConfig {
-    RDS: RDSPersistenceConfig | undefined;
-    Cassandra: CassandraPersistenceConfig | undefined;
-    Visibility: VisibilityConfig;
-}
-
-interface RDSPersistenceConfig {
-    EnvironmentStackName: string;
-    Engine: string;
-    EngineVersion: string;
-    IOPS: number | undefined;
-    InstanceType: string;
-    Cluster: boolean;
-}
-
-interface CassandraPersistenceConfig {
-    NodeType: string;
-    NodeCount: number;
-    ReplicaCount: number;
-};
-
-interface OpenSearchConfig {
-    InstanceType: string;
-    EngineVersion: string;
-}
 
 type Values = pulumi.Output<any>;
 
@@ -304,31 +188,14 @@ function rdsPersistence(name: string, config: RDSPersistenceConfig, securityGrou
         })
 
         endpoint = rdsCluster.endpoint;
-    } else if (config.Cluster) {
-        const engine = config.Engine;
-
-        const rdsCluster = new aws.rds.Cluster(name, {
-            allocatedStorage: 1024,
-            availabilityZones: awsConfig.AvailabilityZones,
-            dbSubnetGroupName: awsConfig.RdsSubnetGroupName,
-            vpcSecurityGroupIds: [rdsSecurityGroup.id],
-            clusterIdentifierPrefix: name,
-            engine: engine,
-            engineVersion: config.EngineVersion,
-            dbClusterInstanceClass: config.InstanceType,
-            skipFinalSnapshot: true,
-            masterUsername: "temporal",
-            masterPassword: "temporal",
-        });
-        
-        endpoint = rdsCluster.endpoint;
     } else {
         const engine = config.Engine;
 
         const rdsInstance = new aws.rds.Instance(name, {
+            storageType: "gp3",
+            storageEncrypted: true,
             allocatedStorage: 1024,
             iops: config.IOPS,
-            availabilityZone: awsConfig.AvailabilityZones[0],
             dbSubnetGroupName: awsConfig.RdsSubnetGroupName,
             vpcSecurityGroupIds: [rdsSecurityGroup.id],
             identifierPrefix: name,
@@ -338,13 +205,13 @@ function rdsPersistence(name: string, config: RDSPersistenceConfig, securityGrou
             skipFinalSnapshot: true,
             username: "temporal",
             password: "temporal",
-            storageEncrypted: true,
             publiclyAccessible: false,
+            multiAz: true,
             tags: {
                 "numHistoryShards": shards.toString()
             }
         }, { replaceOnChanges: ["instanceClass", "tags.numHistoryShards"] });
-        
+
         endpoint = rdsInstance.address;
     }
 
@@ -775,6 +642,8 @@ const benchmark = new k8s.helm.v4.Chart('benchmark-workers', {
         },
         soakTest: {
             enabled: true,
+            workflowType: "DSL",
+            workflowArgs: '[{"a": "Echo", "i": {"Message": "test"}, "r": 3},{"c": [{"a": "Echo", "i": {"Message": "test"}, "r": 3}]}]',
             replicaCount: benchmarkConfig.SoakTest.Pods,
             concurrentWorkflows: benchmarkConfig.SoakTest.ConcurrentWorkflows,
             resources: {
