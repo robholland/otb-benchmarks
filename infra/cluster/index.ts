@@ -484,6 +484,7 @@ const kubePrometheusStack = new k8s.helm.v4.Chart('kube-prometheus-stack', {
             prometheusSpec: {
                 podMonitorSelectorNilUsesHelmValues: false,
                 serviceMonitorSelectorNilUsesHelmValues: false,
+                ruleSelectorNilUsesHelmValues: false,
             },
         },
         prometheusOperator: {
@@ -493,6 +494,54 @@ const kubePrometheusStack = new k8s.helm.v4.Chart('kube-prometheus-stack', {
         },
     },
 }, { provider: cluster.provider, dependsOn: [monitoringNamespace, monitoringCRDs] });
+
+// Add Prometheus Rules for benchmark monitoring
+const benchmarkAlertRules = new k8s.apiextensions.CustomResource("benchmark-alerts", {
+    apiVersion: "monitoring.coreos.com/v1",
+    kind: "PrometheusRule",
+    metadata: {
+        name: "benchmark-alert-rules",
+        namespace: monitoringNamespace.metadata.name,
+        labels: {
+            "app.kubernetes.io/part-of": "kube-prometheus-stack",
+            "prometheus": "kube-prometheus-stack-prometheus",
+            "role": "alert-rules",
+        },
+    },
+    spec: {
+        groups: [
+            {
+                name: "temporal.benchmarks.rules",
+                rules: [
+                    {
+                        alert: "TemporalHighWorkflowTaskLatency",
+                        expr: 'histogram_quantile(0.95, sum by(le) (rate(temporal_workflow_task_schedule_to_start_latency_bucket{namespace="benchmark"}[1m]))) > 0.150',
+                        for: "1m",
+                        labels: {
+                            severity: "warning",
+                        },
+                        annotations: {
+                            summary: "High workflow task latency detected",
+                            description: "95th percentile of workflow task schedule-to-start latency in the benchmark namespace is above 150ms",
+                        },
+                    },
+                    {
+                        alert: "TemporalHighActivityTaskLatency",
+                        expr: 'histogram_quantile(0.95, sum by(le) (rate(temporal_activity_schedule_to_start_latency_bucket{namespace="benchmark"}[1m]))) > 0.150',
+                        for: "1m",
+                        labels: {
+                            severity: "warning",
+                        },
+                        annotations: {
+                            summary: "High activity task latency detected",
+                            description: "95th percentile of activity task schedule-to-start latency in the benchmark namespace is above 150ms",
+                        },
+                    },
+                ],
+            },
+        ],
+    },
+}, { provider: cluster.provider, dependsOn: [kubePrometheusStack] });
 
 const temporal = new k8s.helm.v4.Chart('temporal',
     {
@@ -614,7 +663,7 @@ const benchmarkNamespace = new k8s.core.v1.Namespace("benchmark", {
 
 const benchmark = new k8s.helm.v4.Chart('benchmark-workers', {
     chart: "oci://ghcr.io/temporalio/charts/benchmark-workers",
-    version: "0.2.0",
+    version: "0.3.0",
     namespace: benchmarkNamespace.metadata.name,
     values: {
         temporal: {
