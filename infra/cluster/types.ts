@@ -109,6 +109,7 @@ export interface BenchmarkConfig {
   SoakTest: {
     Pods: number;
     ConcurrentWorkflows: number;
+    Target: number;
     CPU: {
       Request: string | number;
     };

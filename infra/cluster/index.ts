@@ -511,6 +511,16 @@ const benchmarkAlertRules = new k8s.apiextensions.CustomResource("benchmark-aler
     spec: {
         groups: [
             {
+                name: "temporal.benchmarks.recording",
+                interval: "30s",
+                rules: [
+                    {
+                        record: "benchmark:state_transition_rate",
+                        expr: `sum(rate(state_transition_count_count{exported_namespace="benchmark"}[1m]))`,
+                    },
+                ],
+            },
+            {
                 name: "temporal.benchmarks.rules",
                 rules: [
                     {
@@ -535,6 +545,69 @@ const benchmarkAlertRules = new k8s.apiextensions.CustomResource("benchmark-aler
                         annotations: {
                             summary: "High activity task latency detected",
                             description: "95th percentile of activity task schedule-to-start latency in the benchmark namespace is above 150ms",
+                        },
+                    },
+                    {
+                        alert: "TemporalFrontendHighCPUUsage",
+                        expr: 'sum(rate(container_cpu_usage_seconds_total{container="temporal-frontend"}[1m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-frontend"}) by (pod) / sum(kube_pod_container_resource_requests{job="kube-state-metrics",namespace="temporal",resource="cpu",container="temporal-frontend"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-frontend"}) by (pod) > 0.85',
+                        for: "1m",
+                        labels: {
+                            severity: "warning",
+                            service: "frontend",
+                        },
+                        annotations: {
+                            summary: "High CPU usage in Temporal Frontend",
+                            description: "Frontend pod {{ $labels.pod }} is using more than 85% of requested CPU",
+                        },
+                    },
+                    {
+                        alert: "TemporalHistoryHighCPUUsage",
+                        expr: 'sum(rate(container_cpu_usage_seconds_total{container="temporal-history"}[1m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-history"}) by (pod) / sum(kube_pod_container_resource_requests{job="kube-state-metrics",namespace="temporal",resource="cpu",container="temporal-history"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-history"}) by (pod) > 0.85',
+                        for: "1m",
+                        labels: {
+                            severity: "warning",
+                            service: "history",
+                        },
+                        annotations: {
+                            summary: "High CPU usage in Temporal History",
+                            description: "History pod {{ $labels.pod }} is using more than 85% of requested CPU",
+                        },
+                    },
+                    {
+                        alert: "TemporalMatchingHighCPUUsage",
+                        expr: 'sum(rate(container_cpu_usage_seconds_total{container="temporal-matching"}[1m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-matching"}) by (pod) / sum(kube_pod_container_resource_requests{job="kube-state-metrics",namespace="temporal",resource="cpu",container="temporal-matching"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-matching"}) by (pod) > 0.85',
+                        for: "1m",
+                        labels: {
+                            severity: "warning",
+                            service: "matching",
+                        },
+                        annotations: {
+                            summary: "High CPU usage in Temporal Matching",
+                            description: "Matching pod {{ $labels.pod }} is using more than 85% of requested CPU",
+                        },
+                    },
+                    {
+                        alert: "TemporalLowStateTransitionRate",
+                        expr: `benchmark:state_transition_rate < ${benchmarkConfig.SoakTest.Target}`,
+                        for: "1m",
+                        labels: {
+                            severity: "warning",
+                        },
+                        annotations: {
+                            summary: "Low state transition rate detected",
+                            description: `State transition rate is below target of ${benchmarkConfig.SoakTest.Target} transitions per second`,
+                        },
+                    },
+                    {
+                        alert: "BenchmarkSystemUnhealthy",
+                        expr: `ALERTS{alertname=~"Temporal.*"} > 0`,
+                        for: "1m",
+                        labels: {
+                            severity: "critical",
+                        },
+                        annotations: {
+                            summary: "Benchmark system is unhealthy",
+                            description: "Benchmark alerts are firing",
                         },
                     },
                 ],

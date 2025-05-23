@@ -20,9 +20,9 @@ config:
       WorkflowPollers: 100
       ActivityPollers: 150
     SoakTest:
-      ConcurrentWorkflows: 4
+      ConcurrentWorkflows: 12
       Pods: 2
-      Target: 500
+      Target: 1500
       CPU:
         Request: 0.25
       Memory:
@@ -39,25 +39,25 @@ config:
     RDS:
       Engine: mysql
       EngineVersion: "8.4.5"
-      InstanceType: db.r5.xlarge
+      InstanceType: db.r5.2xlarge
   temporal-otb-benchmarks-cluster:Temporal:
     Frontend:
       Pods: 2
       CPU:
-        Request: 1
+        Request: 2
       Memory:
         Request: 128Mi
     History:
       Shards: 512
       Pods: 2
       CPU:
-        Request: 2
+        Request: 3
       Memory:
         Request: 8Gi
     Matching:
       Pods: 2
       CPU:
-        Request: 0.5
+        Request: 1
       Memory:
         Request: 128Mi
     Worker:
