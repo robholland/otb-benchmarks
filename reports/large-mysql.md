@@ -1,5 +1,15 @@
 # Cluster Stack: large-mysql
 
+## Summary
+
+### 💰 Total Estimated Monthly Cost
+**$5178.64**
+
+### 🎯 Benchmark Target
+- **Target Throughput:** 5000 state transitions/second
+
+---
+
 ## AWS Region
 - **Region:** us-west-2
 - **Availability Zones:** us-west-2a, us-west-2b, us-west-2c
@@ -8,8 +18,8 @@
 | Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |
 |------|--------------|------------|----------------|-------------|
 | large-mysql | m5.2xlarge | 1 | $0.3840 | $276.48 |
-| large-mysql-temporal | c5.4xlarge | 4 | $0.6800 | $1958.40 |
 | large-mysql-worker | c5.large | 1 | $0.0850 | $61.20 |
+| large-mysql-temporal | c5.4xlarge | 4 | $0.6800 | $1958.40 |
 
 - **Total EKS Monthly Cost:** $2296.08
 
@@ -41,11 +51,7 @@
 
 ## Benchmark Runner
 
-| Pods | CPU (Request) | Memory (Request) | Concurrent Workflows |
-|------|---------------|------------------|---------------------|
-| 2 | 0.25 | 50Mi | 40 |
+| Pods | CPU (Request) | Memory (Request) | Concurrent Workflows | Target |
+|------|---------------|------------------|--------------------- |--------|
+| 2 | 0.25 | 50Mi | 40 | 5000 |
 
-
-## Cost Summary
-
-- **Total Estimated Monthly Cost:** $5178.64

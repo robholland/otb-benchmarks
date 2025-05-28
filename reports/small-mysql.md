@@ -1,5 +1,15 @@
 # Cluster Stack: small-mysql
 
+## Summary
+
+### 💰 Total Estimated Monthly Cost
+**$1707.52**
+
+### 🎯 Benchmark Target
+- **Target Throughput:** 500 state transitions/second
+
+---
+
 ## AWS Region
 - **Region:** us-west-2
 - **Availability Zones:** us-west-2a, us-west-2b, us-west-2c
@@ -41,11 +51,7 @@
 
 ## Benchmark Runner
 
-| Pods | CPU (Request) | Memory (Request) | Concurrent Workflows |
-|------|---------------|------------------|---------------------|
-| 2 | 0.25 | 50Mi | 4 |
+| Pods | CPU (Request) | Memory (Request) | Concurrent Workflows | Target |
+|------|---------------|------------------|--------------------- |--------|
+| 2 | 0.25 | 50Mi | 4 | 500 |
 
-
-## Cost Summary
-
-- **Total Estimated Monthly Cost:** $1707.52
