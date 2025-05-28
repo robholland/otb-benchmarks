@@ -224,7 +224,9 @@ function rdsPersistence(name: string, config: RDSPersistenceConfig, securityGrou
             port: dbPort,
             database: "temporal_persistence",
             user: "temporal",
-            password: "temporal"
+            password: "temporal",
+            maxConns: 30,
+            maxIdleConns: 30,
         }
     };
 
@@ -518,16 +520,64 @@ const benchmarkAlertRules = new k8s.apiextensions.CustomResource("benchmark-aler
                         record: "benchmark:state_transition_rate",
                         expr: `sum(rate(state_transition_count_count{exported_namespace="benchmark"}[1m]))`,
                     },
+                    {
+                        record: "temporal:resource:allocatable_total",
+                        expr: `sum(kube_node_status_allocatable * on(node) group_left() (kube_node_spec_taint{key="dedicated",value="temporal"} > 0)) by (resource)`,
+                    },
+                    {
+                        record: "temporal:resource:requests_total",
+                        expr: `sum(kube_pod_container_resource_requests * on(node) group_left() (kube_node_spec_taint{key="dedicated",value="temporal"} > 0)) by (resource)`,
+                    },
+                    {
+                        record: "temporal:resource:largest_node",
+                        expr: `max(kube_node_status_allocatable * on(node) group_left() (kube_node_spec_taint{key="dedicated",value="temporal"} > 0)) by (resource)`,
+                    },
+                    {
+                        record: "temporal:service:cpu_usage_ratio",
+                        expr: `label_replace(sum(rate(container_cpu_usage_seconds_total{container=~"temporal-(frontend|history|matching)"}[1m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload=~"temporal-(frontend|history|matching)"}) by (pod, container) / sum(kube_pod_container_resource_requests{job="kube-state-metrics",namespace="temporal",resource="cpu",container=~"temporal-(frontend|history|matching)"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload=~"temporal-(frontend|history|matching)"}) by (pod, container), "service", "$1", "container", "temporal-(.+)")`,
+                    },
                 ],
             },
             {
-                name: "temporal.benchmarks.rules",
+                name: "temporal.benchmarks.tuning",
+                rules: [
+                    {
+                        alert: "TemporalServiceResourceExhausted",
+                        expr: 'sum(rate(service_errors_resource_exhausted[1m])) by (service_name, resource_exhausted_scope) > 0',
+                        for: "30s",
+                        labels: {
+                            severity: "warning",
+                            service: "{{ $labels.service_name }}",
+                        },
+                        annotations: {
+                            summary: "Temporal {{ $labels.service_name }} experiencing resource exhausted errors, scope: {{ $labels.resource_exhausted_scope }}",
+                            description: "{{ $labels.service_name }} service is returning resource exhausted errors for scope {{ $labels.resource_exhausted_scope }} at {{ $value }} errors per second",
+                        },
+                    },
+                    {
+                        alert: "TemporalPersistenceResourceExhausted",
+                        expr: 'sum(rate(persistence_errors_resource_exhausted[1m])) by (service_name, resource_exhausted_scope) > 0',
+                        for: "30s",
+                        labels: {
+                            severity: "warning",
+                            service: "{{ $labels.service_name }}",
+                        },
+                        annotations: {
+                            summary: "Temporal {{ $labels.service_name }} experiencing persistence resource exhausted errors, scope: {{ $labels.resource_exhausted_scope }}",
+                            description: "{{ $labels.service_name }} service is returning persistence resource exhausted errors for scope {{ $labels.resource_exhausted_scope }} at {{ $value }} errors per second",
+                        },
+                    },
+                ],
+            },
+            {
+                name: "temporal.benchmarks.slo",
                 rules: [
                     {
                         alert: "TemporalHighWorkflowTaskLatency",
                         expr: 'histogram_quantile(0.95, sum by(le) (rate(temporal_workflow_task_schedule_to_start_latency_bucket{namespace="benchmark"}[1m]))) > 0.150',
                         for: "1m",
                         labels: {
+                            impact: "slo",
                             severity: "warning",
                         },
                         annotations: {
@@ -540,6 +590,7 @@ const benchmarkAlertRules = new k8s.apiextensions.CustomResource("benchmark-aler
                         expr: 'histogram_quantile(0.95, sum by(le) (rate(temporal_activity_schedule_to_start_latency_bucket{namespace="benchmark"}[1m]))) > 0.150',
                         for: "1m",
                         labels: {
+                            impact: "slo",
                             severity: "warning",
                         },
                         annotations: {
@@ -548,42 +599,29 @@ const benchmarkAlertRules = new k8s.apiextensions.CustomResource("benchmark-aler
                         },
                     },
                     {
-                        alert: "TemporalFrontendHighCPUUsage",
-                        expr: 'sum(rate(container_cpu_usage_seconds_total{container="temporal-frontend"}[1m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-frontend"}) by (pod) / sum(kube_pod_container_resource_requests{job="kube-state-metrics",namespace="temporal",resource="cpu",container="temporal-frontend"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-frontend"}) by (pod) > 0.85',
+                        alert: "TemporalHighCPUUsage",
+                        expr: 'temporal:service:cpu_usage_ratio > 0.85',
                         for: "1m",
                         labels: {
+                            impact: "slo",
                             severity: "warning",
-                            service: "frontend",
                         },
                         annotations: {
-                            summary: "High CPU usage in Temporal Frontend",
-                            description: "Frontend pod {{ $labels.pod }} is using more than 85% of requested CPU",
+                            summary: "High CPU usage in Temporal {{ .service | title }}",
+                            description: "{{ .service | title }} pod {{ $labels.pod }} is using more than 85% of requested CPU",
                         },
                     },
                     {
-                        alert: "TemporalHistoryHighCPUUsage",
-                        expr: 'sum(rate(container_cpu_usage_seconds_total{container="temporal-history"}[1m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-history"}) by (pod) / sum(kube_pod_container_resource_requests{job="kube-state-metrics",namespace="temporal",resource="cpu",container="temporal-history"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-history"}) by (pod) > 0.85',
+                        alert: "TemporalInsufficientNodeSpareCapacity",
+                        expr: `(temporal:resource:allocatable_total - temporal:resource:requests_total) / temporal:resource:largest_node < 1`,
                         for: "1m",
                         labels: {
+                            impact: "slo",
                             severity: "warning",
-                            service: "history",
                         },
                         annotations: {
-                            summary: "High CPU usage in Temporal History",
-                            description: "History pod {{ $labels.pod }} is using more than 85% of requested CPU",
-                        },
-                    },
-                    {
-                        alert: "TemporalMatchingHighCPUUsage",
-                        expr: 'sum(rate(container_cpu_usage_seconds_total{container="temporal-matching"}[1m]) * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-matching"}) by (pod) / sum(kube_pod_container_resource_requests{job="kube-state-metrics",namespace="temporal",resource="cpu",container="temporal-matching"} * on(namespace,pod) group_left(workload, workload_type) namespace_workload_pod:kube_pod_owner:relabel{namespace="temporal", workload="temporal-matching"}) by (pod) > 0.85',
-                        for: "1m",
-                        labels: {
-                            severity: "warning",
-                            service: "matching",
-                        },
-                        annotations: {
-                            summary: "High CPU usage in Temporal Matching",
-                            description: "Matching pod {{ $labels.pod }} is using more than 85% of requested CPU",
+                            summary: "Temporal nodes have less than 1 node's worth of spare {{ $labels.resource }} capacity",
+                            description: "Temporal nodes have less than 1 node's worth of spare {{ $labels.resource }} capacity. This may cause the system to be unstable.",
                         },
                     },
                     {
@@ -591,23 +629,12 @@ const benchmarkAlertRules = new k8s.apiextensions.CustomResource("benchmark-aler
                         expr: `benchmark:state_transition_rate < ${benchmarkConfig.SoakTest.Target}`,
                         for: "1m",
                         labels: {
+                            impact: "slo",
                             severity: "warning",
                         },
                         annotations: {
                             summary: "Low state transition rate detected",
                             description: `State transition rate is below target of ${benchmarkConfig.SoakTest.Target} transitions per second`,
-                        },
-                    },
-                    {
-                        alert: "BenchmarkSystemUnhealthy",
-                        expr: `ALERTS{alertname=~"Temporal.*"} > 0`,
-                        for: "1m",
-                        labels: {
-                            severity: "critical",
-                        },
-                        annotations: {
-                            summary: "Benchmark system is unhealthy",
-                            description: "Benchmark alerts are firing",
                         },
                     },
                 ],
@@ -641,6 +668,23 @@ const temporal = new k8s.helm.v4.Chart('temporal',
                             }
                         ]
                     }
+                },
+                dynamicConfig: {
+                    ...(temporalConfig.DynamicConfig?.FrontendRPS && {
+                        "frontend.rps": [
+                            { value: temporalConfig.DynamicConfig.FrontendRPS },
+                        ],
+                    }),
+                    ...(temporalConfig.DynamicConfig?.FrontendNamespaceRPS && {
+                        "frontend.namespaceRPS": [
+                            { value: temporalConfig.DynamicConfig.FrontendNamespaceRPS },
+                        ],
+                    }),
+                    ...(temporalConfig.DynamicConfig?.MatchingRPS && {
+                        "matching.rps": [
+                            { value: temporalConfig.DynamicConfig.MatchingRPS },
+                        ],
+                    }),
                 },
                 nodeSelector: {
                     dedicated: "temporal"

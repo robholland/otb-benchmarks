@@ -46,6 +46,12 @@ export interface OpenSearchConfig {
   EngineVersion: string;
 }
 
+export interface DynamicConfig {
+  FrontendRPS?: number;
+  FrontendNamespaceRPS?: number;
+  MatchingRPS?: number;
+}
+
 export interface TemporalConfig {
   Frontend: {
     Pods: number;
@@ -84,6 +90,7 @@ export interface TemporalConfig {
       Request: string;
     };
   };
+  DynamicConfig?: DynamicConfig;
 }
 
 export interface Cluster {

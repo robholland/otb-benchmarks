@@ -5,14 +5,17 @@ import * as fs from "fs";
 import * as path from "path";
 import { PolicyPack, ReportViolation, StackValidationArgs } from "@pulumi/policy";
 import { AWSConfig, TemporalConfig, BenchmarkConfig, PersistenceConfig } from "../../infra/cluster/types";
-
-// Hard-coded price estimates
-const eksPricePerHour = 0.10; // $0.10 per hour for EKS control plane
-const defaultNodePricePerHour = 0.05; // $0.05 per hour per default node
-const rdsPricePerHour = 0.20; // $0.20 per hour for RDS instance
+import { LocalAWSPricingService } from "./pricing-data";
 
 // Report directory
 const REPORT_DIRECTORY = "../../reports";
+
+// Pricing cache to avoid repeated API calls
+interface PricingCache {
+    [key: string]: number;
+}
+
+let pricingCache: PricingCache = {};
 
 // Resource information interface for reporting
 interface ResourceInfo {
@@ -20,19 +23,24 @@ interface ResourceInfo {
     availabilityZones?: string[];
     eksCluster?: {
         name: string;
+        pricePerHour?: number;
     };
     nodeGroups: Array<{
         name: string;
         instanceType: string;
         nodeCount: number;
+        pricePerHour?: number;
     }>;
     rdsInstances: Array<{
         name: string;
         instanceClass: string;
         storageGB: number;
+        storageType?: string;
         engine?: string;
         engineVersion?: string;
         multiAz?: boolean;
+        pricePerHour?: number;
+        storagePricePerGBMonth?: number;
     }>;
     temporalServices?: {
         frontend?: {
@@ -83,7 +91,7 @@ new PolicyPack("pricing", {
             name: "stack-resources-pricing-report",
             description: "Analyzes all resources in the stack to generate a comprehensive pricing report",
             enforcementLevel: "advisory",
-            validateStack: (args: StackValidationArgs, reportViolation: ReportViolation) => {
+            validateStack: async (args: StackValidationArgs, reportViolation: ReportViolation) => {
                 const stackName = pulumi.getStack();
 
                 // Access configuration directly using Pulumi Config API
@@ -92,6 +100,10 @@ new PolicyPack("pricing", {
                 const temporalConfig = config.getObject<TemporalConfig>('Temporal');
                 const benchmarkConfig = config.getObject<BenchmarkConfig>('Benchmark');
                 const persistenceConfig = config.getObject<PersistenceConfig>('Persistence');
+                
+                // Initialize pricing service
+                const region = awsConfig?.Region || 'us-east-1';
+                const pricingService = new LocalAWSPricingService();
                 
                 // Initialize resource info collection
                 const resourceInfo: ResourceInfo = {
@@ -122,8 +134,10 @@ new PolicyPack("pricing", {
                 for (const [urn, resource] of Object.entries(args.resources)) {
                     switch (resource.type) {
                         case "eks:index/cluster:Cluster":
+                            const eksPrice = await pricingService.getEKSPricing(region);
                             resourceInfo.eksCluster = {
                                 name: resource.name,
+                                pricePerHour: eksPrice
                             };
                             break;
                             
@@ -139,23 +153,34 @@ new PolicyPack("pricing", {
                                 instanceType = launchTemplateCache[asg.launchTemplate.name];
                             }
                             
+                            const nodePrice = await pricingService.getEC2Pricing(instanceType, region);
+                            
                             // Store the node group info for reporting
                             resourceInfo.nodeGroups.push({
                                 name: resource.name,
                                 instanceType,
                                 nodeCount,
+                                pricePerHour: nodePrice
                             });
                             break;
                             
                         case "aws:rds/instance:Instance":
                             const rdsInstance = resource.props;
+                            const instanceClass = rdsInstance.instanceClass || "db.t3.medium";
+                            const engine = rdsInstance.engine || persistenceConfig?.RDS?.Engine || "postgres";
+                            
+                            const rdsPrice = await pricingService.getRDSPricing(instanceClass, engine, region);
+                            
                             resourceInfo.rdsInstances.push({
                                 name: resource.name,
-                                instanceClass: rdsInstance.instanceClass || "db.t3.medium",
-                                storageGB: rdsInstance.allocatedStorage || 20,
+                                instanceClass,
+                                storageGB: rdsInstance.allocatedStorage || 1024,
+                                storageType: rdsInstance.storageType,
                                 engine: rdsInstance.engine,
                                 engineVersion: rdsInstance.engineVersion,
                                 multiAz: rdsInstance.multiAz,
+                                pricePerHour: rdsPrice,
+                                storagePricePerGBMonth: await pricingService.getRDSStoragePricing(rdsInstance.storageType || 'standard', region)
                             });
                             break;
                     }
@@ -257,6 +282,26 @@ new PolicyPack("pricing", {
                     resourceInfo.rdsInstances[0].engineVersion = persistenceConfig.RDS.EngineVersion || resourceInfo.rdsInstances[0].engineVersion;
                 }
 
+                // Validate that all pricing data was successfully retrieved
+                if (resourceInfo.eksCluster && !resourceInfo.eksCluster.pricePerHour) {
+                    throw new Error(`Missing pricing data for EKS cluster ${resourceInfo.eksCluster.name}`);
+                }
+                
+                for (const nodeGroup of resourceInfo.nodeGroups) {
+                    if (!nodeGroup.pricePerHour) {
+                        throw new Error(`Missing pricing data for node group ${nodeGroup.name} with instance type ${nodeGroup.instanceType}`);
+                    }
+                }
+                
+                for (const rds of resourceInfo.rdsInstances) {
+                    if (!rds.pricePerHour) {
+                        throw new Error(`Missing instance pricing data for RDS instance ${rds.name} with instance class ${rds.instanceClass}`);
+                    }
+                    if (!rds.storagePricePerGBMonth) {
+                        throw new Error(`Missing storage pricing data for RDS instance ${rds.name} with storage type ${rds.storageType || 'standard'}`);
+                    }
+                }
+
                 // Generate the markdown report
                 const reportContent = generateMarkdownReport(stackName, resourceInfo);
                 
@@ -270,7 +315,7 @@ new PolicyPack("pricing", {
                     const reportPath = path.join(REPORT_DIRECTORY, `${stackName}.md`);
                     fs.writeFileSync(reportPath, reportContent);
                     
-                    reportViolation(`Generated stack resource and pricing report for "${stackName}" at ${reportPath}`);
+                    reportViolation(`Generated stack resource and pricing report for "${stackName}" at ${reportPath}.`);
                 } catch (error) {
                     reportViolation(`Failed to save report: ${error}`);
                 }
@@ -299,41 +344,33 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
     if (info.nodeGroups.length === 0) {
         md += `- No EKS node groups found\n\n`;
     } else {
-        md += `| Name | Instance Type | Node Count | Cost/Node | Monthly Cost |\n`;
-        md += `|------|--------------|------------|-----------|-------------|\n`;
+        md += `| Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |\n`;
+        md += `|------|--------------|------------|----------------|-------------|\n`;
         for (const ng of info.nodeGroups) {
-            // Calculate pricing based on instance type
-            let nodePricePerHour = defaultNodePricePerHour;
-            if (ng.instanceType.startsWith("m5.") || ng.instanceType.startsWith("c5.")) {
-                nodePricePerHour = 0.10;
-            } else if (ng.instanceType.startsWith("m5.2xl") || ng.instanceType.startsWith("c5.2xl")) {
-                nodePricePerHour = 0.20;
-            } else if (ng.instanceType.startsWith("r5.")) {
-                nodePricePerHour = 0.15;
+            if (!ng.pricePerHour) {
+                throw new Error(`Missing pricing data for node group ${ng.name} with instance type ${ng.instanceType}`);
             }
-            
+            const nodePricePerHour = ng.pricePerHour;
             const nodeMonthlyPrice = nodePricePerHour * 24 * 30;
             const totalMonthlyPrice = nodeMonthlyPrice * ng.nodeCount;
-            md += `| ${ng.name} | ${ng.instanceType} | ${ng.nodeCount} | $${nodeMonthlyPrice.toFixed(2)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
+            md += `| ${ng.name} | ${ng.instanceType} | ${ng.nodeCount} | $${nodePricePerHour.toFixed(4)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
         }
         md += `\n`;
         
         // Total EKS cost
         let totalMonthlyNodeCost = info.nodeGroups.reduce((sum, ng) => {
-            let nodePricePerHour = defaultNodePricePerHour;
-            if (ng.instanceType.startsWith("m5.") || ng.instanceType.startsWith("c5.")) {
-                nodePricePerHour = 0.10;
-            } else if (ng.instanceType.startsWith("m5.2xl") || ng.instanceType.startsWith("c5.2xl")) {
-                nodePricePerHour = 0.20;
-            } else if (ng.instanceType.startsWith("r5.")) {
-                nodePricePerHour = 0.15;
+            if (!ng.pricePerHour) {
+                throw new Error(`Missing pricing data for node group ${ng.name}`);
             }
-            return sum + (nodePricePerHour * ng.nodeCount * 24 * 30);
+            return sum + (ng.pricePerHour * ng.nodeCount * 24 * 30);
         }, 0);
         let totalEksCost = totalMonthlyNodeCost;
         
         if (info.eksCluster) {
-            const eksMonthlyPrice = eksPricePerHour * 24 * 30;
+            if (!info.eksCluster.pricePerHour) {
+                throw new Error(`Missing pricing data for EKS cluster ${info.eksCluster.name}`);
+            }
+            const eksMonthlyPrice = info.eksCluster.pricePerHour * 24 * 30;
             totalEksCost += eksMonthlyPrice;
             md += `- **EKS Control Plane:** $${eksMonthlyPrice.toFixed(2)}/month\n`;
         }
@@ -348,23 +385,23 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
     } else {
         const rds = info.rdsInstances[0]; // Assuming there's one main RDS instance
         
-        // Calculate RDS pricing
-        let instancePricePerHour = rdsPricePerHour;
-        if (rds.instanceClass.includes("large")) {
-            instancePricePerHour = 0.40;
-        } else if (rds.instanceClass.includes("xlarge")) {
-            instancePricePerHour = 0.80;
+        if (!rds.pricePerHour) {
+            throw new Error(`Missing pricing data for RDS instance ${rds.name} with instance class ${rds.instanceClass}`);
         }
         
+        // Use API-fetched pricing
+        const instancePricePerHour = rds.pricePerHour;
         const instanceMonthlyPrice = instancePricePerHour * 24 * 30;
-        const storageMonthlyPrice = rds.storageGB * 0.10;
+        const storageMonthlyPrice = rds.storageGB * rds.storagePricePerGBMonth!;
         const totalMonthlyPrice = instanceMonthlyPrice + storageMonthlyPrice;
         
         md += `- **Engine:** ${rds.engine || '-'} ${rds.engineVersion || ''}\n`;
         md += `- **Instance Type:** ${rds.instanceClass}\n`;
         md += `- **Multi-AZ:** ${rds.multiAz ? 'Yes' : 'No'}\n`;
-        md += `- **Storage:** ${rds.storageGB} GB\n`;
-        md += `- **Monthly Cost:** $${totalMonthlyPrice.toFixed(2)}\n\n`;
+        md += `- **Storage:** ${rds.storageGB} GB *(configured for benchmark setup - real deployments would likely need much higher storage)*\n`;
+        md += `- **Instance Cost:** $${instanceMonthlyPrice.toFixed(2)}/month\n`;
+        md += `- **Storage Cost:** $${storageMonthlyPrice.toFixed(2)}/month\n`;
+        md += `- **Total Monthly Cost:** $${totalMonthlyPrice.toFixed(2)}\n\n`;
     }
     
     // Temporal Services
@@ -433,40 +470,32 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
     let totalMonthlyCost = 0;
     
     if (info.eksCluster) {
-        totalMonthlyCost += eksPricePerHour * 24 * 30;
+        if (!info.eksCluster.pricePerHour) {
+            throw new Error(`Missing pricing data for EKS cluster in cost summary`);
+        }
+        totalMonthlyCost += info.eksCluster.pricePerHour * 24 * 30;
     }
     
     // Node group costs
     totalMonthlyCost += info.nodeGroups.reduce((sum, ng) => {
-        let nodePricePerHour = defaultNodePricePerHour;
-        if (ng.instanceType.startsWith("m5.") || ng.instanceType.startsWith("c5.")) {
-            nodePricePerHour = 0.10;
-        } else if (ng.instanceType.startsWith("m5.2xl") || ng.instanceType.startsWith("c5.2xl")) {
-            nodePricePerHour = 0.20;
-        } else if (ng.instanceType.startsWith("r5.")) {
-            nodePricePerHour = 0.15;
+        if (!ng.pricePerHour) {
+            throw new Error(`Missing pricing data for node group ${ng.name} in cost summary`);
         }
-        return sum + (nodePricePerHour * ng.nodeCount * 24 * 30);
+        return sum + (ng.pricePerHour * ng.nodeCount * 24 * 30);
     }, 0);
 
     // RDS costs
     if (info.rdsInstances.length > 0) {
         const rds = info.rdsInstances[0];
-        let instancePricePerHour = rdsPricePerHour;
-        if (rds.instanceClass.includes("large")) {
-            instancePricePerHour = 0.40;
-        } else if (rds.instanceClass.includes("xlarge")) {
-            instancePricePerHour = 0.80;
+        if (!rds.pricePerHour) {
+            throw new Error(`Missing pricing data for RDS instance ${rds.name} in cost summary`);
         }
-        
-        const instanceMonthlyPrice = instancePricePerHour * 24 * 30;
-        const storageMonthlyPrice = rds.storageGB * 0.10;
+        const instanceMonthlyPrice = rds.pricePerHour * 24 * 30;
+        const storageMonthlyPrice = rds.storageGB * rds.storagePricePerGBMonth!;
         totalMonthlyCost += instanceMonthlyPrice + storageMonthlyPrice;
     }
     
     md += `- **Total Estimated Monthly Cost:** $${totalMonthlyCost.toFixed(2)}\n`;
-    
-    md += `\n---\n\n*This is an automatically generated report with estimated pricing. Actual AWS costs may vary.*\n`;
-    
+        
     return md;
 } 

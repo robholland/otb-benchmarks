@@ -1,0 +1,73 @@
+encryptionsalt: v1:6/zfWfWGCmk=:v1:EabJxRYO+P9qughm:pVT3uflMRXsY9XO+IMDWSkB/SK+DQA==
+config:
+  aws:region: us-west-2
+  aws:assumeRole:
+    roleArn: arn:aws:iam::912773994842:role/BenchmarkClusterAdmin
+  temporal-otb-benchmarks-cluster:AWS:
+    Region: us-west-2
+    AvailabilityZones: ["us-west-2a", "us-west-2b", "us-west-2c"]
+    PrivateSubnetIds: ["subnet-00e269bfc224d9c88", "subnet-0331497242f215670", "subnet-0e19e96d60a8d43fe"]
+    RdsSubnetGroupName: "temporal-benchmark-rds-d034419"
+    Role: BenchmarkClusterAdmin
+    VpcId: "vpc-0f0ab8c917df6d422"
+  temporal-otb-benchmarks-cluster:Benchmark:
+    Workers:
+      Pods: 4
+      CPU:
+        Request: 1
+      Memory:
+        Request: 50Mi
+      WorkflowPollers: 100
+      ActivityPollers: 150
+    SoakTest:
+      ConcurrentWorkflows: 40
+      Pods: 2
+      Target: 5000
+      CPU:
+        Request: 0.25
+      Memory:
+        Request: 50Mi
+  temporal-otb-benchmarks-cluster:Cluster:
+    EKS:
+      NodeType: m5.2xlarge
+      NodeCount: 1
+      TemporalNodeType: c5.4xlarge
+      TemporalNodeCount: 4
+      WorkerNodeType: c5.large
+      WorkerNodeCount: 1
+  temporal-otb-benchmarks-cluster:Persistence:
+    RDS:
+      Engine: mysql
+      EngineVersion: "8.4.5"
+      InstanceType: db.r5.4xlarge
+  temporal-otb-benchmarks-cluster:Temporal:
+    Frontend:
+      Pods: 2
+      CPU:
+        Request: 3
+      Memory:
+        Request: 128Mi
+    History:
+      Shards: 1024
+      Pods: 6
+      CPU:
+        Request: 3
+      Memory:
+        Request: 4Gi
+    Matching:
+      Pods: 3
+      CPU:
+        Request: 2
+      Memory:
+        Request: 128Mi
+    Worker:
+      Pods: 2
+      CPU:
+        Request: 0.25
+      Memory:
+        Request: 128Mi
+    DynamicConfig:
+      FrontendRPS: 4800
+      FrontendNamespaceRPS: 4800
+      MatchingRPS: 3600
+
