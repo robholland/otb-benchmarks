@@ -769,7 +769,7 @@ const temporal = new k8s.helm.v4.Chart('temporal',
         replaceOnChanges: [
             "values.server.config.numHistoryShards",
             "values.server.config.persistence.default.sql.host",
-            "values.server.config.visibility.sql.host",
+            "values.server.config.persistence.visibility.sql.host",
         ],
     }
 );
@@ -784,7 +784,7 @@ const benchmark = new k8s.helm.v4.Chart('benchmark-workers', {
     namespace: benchmarkNamespace.metadata.name,
     values: {
         temporal: {
-            grpcEndpoint: "temporal-frontend.temporal:7233",
+            grpcEndpoint: "dns:///temporal-frontend-headless.temporal:7233",
             namespace: "benchmark",
             taskQueue: "benchmark",
             workflowTaskPollers: benchmarkConfig.Workers.WorkflowPollers,
