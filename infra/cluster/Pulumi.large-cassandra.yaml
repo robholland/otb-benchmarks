@@ -12,57 +12,69 @@ config:
     VpcId: "vpc-0f0ab8c917df6d422"
   temporal-otb-benchmarks-cluster:Benchmark:
     Workers:
-      Pods: 3
+      Pods: 2
       CPU:
         Request: 1
       Memory:
-        Request: 256Mi
-      WorkflowPollers: 30
-      ActivityPollers: 50
+        Request: 50Mi
+      WorkflowPollers: 100
+      ActivityPollers: 150
     SoakTest:
       ConcurrentWorkflows: 30
       Pods: 1
-      Target: 500
+      Target: 5000
       CPU:
         Request: 0.25
       Memory:
         Request: 50Mi
   temporal-otb-benchmarks-cluster:Cluster:
     EKS:
-      NodeType: m5.2xlarge
+      NodeType: r5.xlarge
       NodeCount: 3
-      TemporalNodeType: c5.2xlarge
-      TemporalNodeCount: 3
+      TemporalNodeType: c5.4xlarge
+      TemporalNodeCount: 4
       WorkerNodeType: c5.xlarge
       WorkerNodeCount: 3
   temporal-otb-benchmarks-cluster:Persistence:
-    RDS:
-      Engine: mysql
-      EngineVersion: "8.4.5"
-      InstanceType: db.r5.xlarge
+    Cassandra:
+      NodeType: m5.xlarge
+      NodeCount: 3
+      CPU:
+        Request: 4
+      Memory:
+        Request: 16Gi
+    Visibility:
+      OpenSearch:
+        InstanceType: m5.large.search
+        EngineVersion: OpenSearch_2.11
   temporal-otb-benchmarks-cluster:Temporal:
     Frontend:
-      Pods: 3
+      Pods: 6
       CPU:
-        Request: 1
+        Request: 2
       Memory:
         Request: 256Mi
     History:
-      Shards: 512
-      Pods: 6
+      Shards: 1024
+      Pods: 12
       CPU:
-        Request: 1
+        Request: 2
       Memory:
         Request: 4Gi
     Matching:
-      Pods: 3
+      Pods: 6
       CPU:
         Request: 1
       Memory:
         Request: 256Mi
     Worker:
-      Pods: 3
+      Pods: 2
       CPU:
         Request: 0.25
       Memory:
         Request: 128Mi
+    DynamicConfig:
+      FrontendRPS: 4800
+      FrontendNamespaceRPS: 4800
+      MatchingRPS: 3600
+

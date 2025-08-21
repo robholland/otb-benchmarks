@@ -1,3 +1,5 @@
+import * as pulumi from "@pulumi/pulumi";
+
 export interface AWSConfig {
   Region: string;
   VpcId: string;
@@ -38,7 +40,12 @@ export interface RDSPersistenceConfig {
 export interface CassandraPersistenceConfig {
   NodeType: string;
   NodeCount: number;
-  ReplicaCount: number;
+  CPU: {
+    Request: number;
+  };
+  Memory: {
+    Request: string;
+  };
 }
 
 export interface OpenSearchConfig {
@@ -56,7 +63,7 @@ export interface TemporalConfig {
   Frontend: {
     Pods: number;
     CPU: {
-      Request: string | number;
+      Request: number;
     };
     Memory: {
       Request: string;
@@ -66,7 +73,7 @@ export interface TemporalConfig {
     Pods: number;
     Shards: number;
     CPU: {
-      Request: string | number;
+      Request: number;
     };
     Memory: {
       Request: string;
@@ -75,7 +82,7 @@ export interface TemporalConfig {
   Matching: {
     Pods: number;
     CPU: {
-      Request: string | number;
+      Request: number;
     };
     Memory: {
       Request: string;
@@ -84,7 +91,7 @@ export interface TemporalConfig {
   Worker: {
     Pods: number;
     CPU: {
-      Request: string | number;
+      Request: number;
     };
     Memory: {
       Request: string;
@@ -107,7 +114,7 @@ export interface BenchmarkConfig {
     WorkflowPollers: number;
     ActivityPollers: number;
     CPU: {
-      Request: string | number;
+      Request: number;
     };
     Memory: {
       Request: string;
@@ -118,10 +125,15 @@ export interface BenchmarkConfig {
     ConcurrentWorkflows: number;
     Target: number;
     CPU: {
-      Request: string | number;
+      Request: number;
     };
     Memory: {
       Request: string;
     };
   };
+}
+
+export interface Stage<T = any> {
+  values: pulumi.Output<T>;
+  dependencies: pulumi.Resource[];
 }

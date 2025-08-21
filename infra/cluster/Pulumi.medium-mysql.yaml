@@ -20,8 +20,8 @@ config:
       WorkflowPollers: 100
       ActivityPollers: 150
     SoakTest:
-      ConcurrentWorkflows: 12
-      Pods: 2
+      ConcurrentWorkflows: 20
+      Pods: 1
       Target: 1500
       CPU:
         Request: 0.25
@@ -30,11 +30,11 @@ config:
   temporal-otb-benchmarks-cluster:Cluster:
     EKS:
       NodeType: m5.2xlarge
-      NodeCount: 1
-      TemporalNodeType: m5.2xlarge
-      TemporalNodeCount: 2
-      WorkerNodeType: m5.large
-      WorkerNodeCount: 1
+      NodeCount: 3
+      TemporalNodeType: c5.2xlarge
+      TemporalNodeCount: 3
+      WorkerNodeType: c5.xlarge
+      WorkerNodeCount: 3
   temporal-otb-benchmarks-cluster:Persistence:
     RDS:
       Engine: mysql
@@ -42,26 +42,26 @@ config:
       InstanceType: db.r5.2xlarge
   temporal-otb-benchmarks-cluster:Temporal:
     Frontend:
-      Pods: 2
-      CPU:
-        Request: 2
-      Memory:
-        Request: 128Mi
-    History:
-      Shards: 512
-      Pods: 2
-      CPU:
-        Request: 3
-      Memory:
-        Request: 8Gi
-    Matching:
-      Pods: 2
+      Pods: 3
       CPU:
         Request: 1
       Memory:
-        Request: 128Mi
+        Request: 256Mi
+    History:
+      Shards: 512
+      Pods: 6
+      CPU:
+        Request: 1
+      Memory:
+        Request: 4Gi
+    Matching:
+      Pods: 3
+      CPU:
+        Request: 1
+      Memory:
+        Request: 256Mi
     Worker:
-      Pods: 2
+      Pods: 3
       CPU:
         Request: 0.25
       Memory:

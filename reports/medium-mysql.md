@@ -3,7 +3,7 @@
 ## Summary
 
 ### 💰 Total Estimated Monthly Cost
-**$2398.72**
+**$2572.24**
 
 ### 🎯 Benchmark Target
 - **Target Throughput:** 1500 state transitions/second
@@ -17,11 +17,11 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |
 |------|--------------|------------|----------------|-------------|
-| medium-mysql-temporal | m5.2xlarge | 2 | $0.3840 | $552.96 |
-| medium-mysql-worker | m5.large | 1 | $0.0960 | $69.12 |
+| medium-mysql-worker | c5.large | 1 | $0.0850 | $61.20 |
+| medium-mysql-temporal | c5.2xlarge | 3 | $0.3400 | $734.40 |
 | medium-mysql | m5.2xlarge | 1 | $0.3840 | $276.48 |
 
-- **Total EKS Monthly Cost:** $898.56
+- **Total EKS Monthly Cost:** $1072.08
 
 ## RDS (Persistence)
 - **Engine:** mysql 8.4.5
@@ -36,10 +36,10 @@
 
 | Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory |
 |-----------|------|-------------------|----------------------|-----------|-------------|
-| Frontend  | 2    | 2               | 128Mi                | 4       | 256Mi     |
-| History   | 2    | 3               | 8.00Gi                | 6       | 16.00Gi     |
-| Matching  | 2    | 1               | 128Mi                | 2       | 256Mi     |
-| Worker    | 2    | 0.25               | 128Mi                | 0.5       | 256Mi     |
+| Frontend  | 3    | 1               | 256Mi                | 3       | 768Mi     |
+| History   | 6    | 1               | 4.00Gi                | 6       | 24.00Gi     |
+| Matching  | 3    | 1               | 256Mi                | 3       | 768Mi     |
+| Worker    | 3    | 0.25               | 128Mi                | 0.75       | 384Mi     |
 
 - **History Shards:** 512
 
@@ -53,5 +53,5 @@
 
 | Pods | CPU (Request) | Memory (Request) | Concurrent Workflows | Target |
 |------|---------------|------------------|--------------------- |--------|
-| 2 | 0.25 | 50Mi | 12 | 1500 |
+| 1 | 0.25 | 50Mi | 20 | 1500 |
 

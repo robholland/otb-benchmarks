@@ -17,9 +17,9 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |
 |------|--------------|------------|----------------|-------------|
+| small-mysql-temporal | c5.2xlarge | 3 | $0.3400 | $734.40 |
 | small-mysql-worker | c5.large | 1 | $0.0850 | $61.20 |
 | small-mysql | m5.2xlarge | 1 | $0.3840 | $276.48 |
-| small-mysql-temporal | c5.2xlarge | 3 | $0.3400 | $734.40 |
 
 - **Total EKS Monthly Cost:** $1072.08
 
@@ -36,9 +36,9 @@
 
 | Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory |
 |-----------|------|-------------------|----------------------|-----------|-------------|
-| Frontend  | 3    | 1               | 128Mi                | 3       | 384Mi     |
+| Frontend  | 3    | 1               | 256Mi                | 3       | 768Mi     |
 | History   | 6    | 1               | 4.00Gi                | 6       | 24.00Gi     |
-| Matching  | 3    | 1               | 128Mi                | 3       | 384Mi     |
+| Matching  | 3    | 1               | 256Mi                | 3       | 768Mi     |
 | Worker    | 3    | 0.25               | 128Mi                | 0.75       | 384Mi     |
 
 - **History Shards:** 512
