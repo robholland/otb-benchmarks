@@ -30,6 +30,15 @@ interface ResourceInfo {
         instanceType: string;
         nodeCount: number;
         pricePerHour?: number;
+        purpose?: 'core' | 'temporal' | 'worker' | 'cassandra';
+    }>;
+    cassandraNodeGroups: Array<{
+        name: string;
+        instanceType: string;
+        nodeCount: number;
+        pricePerHour?: number;
+        cpuRequest?: number;
+        memoryRequest?: string;
     }>;
     rdsInstances: Array<{
         name: string;
@@ -39,6 +48,15 @@ interface ResourceInfo {
         engine?: string;
         engineVersion?: string;
         multiAz?: boolean;
+        pricePerHour?: number;
+        storagePricePerGBMonth?: number;
+    }>;
+    openSearchInstances: Array<{
+        name: string;
+        instanceType: string;
+        instanceCount: number;
+        storageGB: number;
+        engineVersion?: string;
         pricePerHour?: number;
         storagePricePerGBMonth?: number;
     }>;
@@ -66,6 +84,8 @@ interface ResourceInfo {
         };
     };
     benchmarkWorkers?: {
+        namespaces: number;
+        target: number;
         workers?: {
             pods: number;
             cpuRequest: number | string;
@@ -77,8 +97,6 @@ interface ResourceInfo {
             pods: number;
             cpuRequest: number | string;
             memoryRequest: string;
-            concurrentWorkflows: number;
-            target: number;
         };
     };
 }
@@ -109,7 +127,9 @@ new PolicyPack("pricing", {
                 // Initialize resource info collection
                 const resourceInfo: ResourceInfo = {
                     nodeGroups: [],
-                    rdsInstances: []
+                    cassandraNodeGroups: [],
+                    rdsInstances: [],
+                    openSearchInstances: []
                 };
 
                 // Set region and availability zones from config
@@ -156,13 +176,38 @@ new PolicyPack("pricing", {
                             
                             const nodePrice = await pricingService.getEC2Pricing(instanceType, region);
                             
-                            // Store the node group info for reporting
-                            resourceInfo.nodeGroups.push({
-                                name: resource.name,
-                                instanceType,
-                                nodeCount,
-                                pricePerHour: nodePrice
-                            });
+                            // Determine the purpose of this node group
+                            let purpose: 'core' | 'temporal' | 'worker' | 'cassandra' | undefined;
+                            if (resource.name.includes('-cassandra')) {
+                                purpose = 'cassandra';
+                            } else if (resource.name.includes('-temporal')) {
+                                purpose = 'temporal';
+                            } else if (resource.name.includes('-worker')) {
+                                purpose = 'worker';
+                            } else if (resource.name.includes('-core')) {
+                                purpose = 'core';
+                            }
+                            
+                            // If this is a Cassandra node group, store it separately
+                            if (purpose === 'cassandra') {
+                                resourceInfo.cassandraNodeGroups.push({
+                                    name: resource.name,
+                                    instanceType,
+                                    nodeCount,
+                                    pricePerHour: nodePrice,
+                                    cpuRequest: persistenceConfig?.Cassandra?.CPU?.Request,
+                                    memoryRequest: persistenceConfig?.Cassandra?.Memory?.Request
+                                });
+                            } else {
+                                // Store regular node groups (non-Cassandra)
+                                resourceInfo.nodeGroups.push({
+                                    name: resource.name,
+                                    instanceType,
+                                    nodeCount,
+                                    pricePerHour: nodePrice,
+                                    purpose
+                                });
+                            }
                             break;
                             
                         case "aws:rds/instance:Instance":
@@ -182,6 +227,28 @@ new PolicyPack("pricing", {
                                 multiAz: rdsInstance.multiAz,
                                 pricePerHour: rdsPrice,
                                 storagePricePerGBMonth: await pricingService.getRDSStoragePricing(rdsInstance.storageType || 'standard', region)
+                            });
+                            break;
+                            
+                        case "aws:opensearch/domain:Domain":
+                            const openSearchDomain = resource.props;
+                            const clusterConfig = openSearchDomain.clusterConfig || {};
+                            const osInstanceType = clusterConfig.instanceType || persistenceConfig?.Visibility?.OpenSearch?.InstanceType || "m5.large.search";
+                            const osInstanceCount = clusterConfig.instanceCount || (awsConfig?.AvailabilityZones?.length || 3);
+                            const ebsOptions = openSearchDomain.ebsOptions || {};
+                            const osStorageGB = ebsOptions.volumeSize || 100;
+                            
+                            const openSearchPrice = await pricingService.getOpenSearchPricing(osInstanceType, region);
+                            const openSearchStoragePrice = await pricingService.getOpenSearchStoragePricing(region);
+                            
+                            resourceInfo.openSearchInstances.push({
+                                name: resource.name,
+                                instanceType: osInstanceType,
+                                instanceCount: osInstanceCount,
+                                storageGB: osStorageGB,
+                                engineVersion: openSearchDomain.engineVersion,
+                                pricePerHour: openSearchPrice,
+                                storagePricePerGBMonth: openSearchStoragePrice
                             });
                             break;
                     }
@@ -253,7 +320,10 @@ new PolicyPack("pricing", {
 
                 // Process Benchmark configuration
                 if (benchmarkConfig) {
-                    resourceInfo.benchmarkWorkers = {};
+                    resourceInfo.benchmarkWorkers = {
+                        namespaces: benchmarkConfig.Namespaces || 0,
+                        target: benchmarkConfig.Target || 0
+                    };
 
                     if (benchmarkConfig.Workers) {
                         const workers = benchmarkConfig.Workers;
@@ -272,8 +342,6 @@ new PolicyPack("pricing", {
                             pods: soakTest.Pods || 0,
                             cpuRequest: soakTest.CPU?.Request || '-',
                             memoryRequest: soakTest.Memory?.Request || '-',
-                            concurrentWorkflows: soakTest.ConcurrentWorkflows || 0,
-                            target: soakTest.Target || 0
                         };
                     }
                 }
@@ -295,12 +363,27 @@ new PolicyPack("pricing", {
                     }
                 }
                 
+                for (const cassandraNodeGroup of resourceInfo.cassandraNodeGroups) {
+                    if (!cassandraNodeGroup.pricePerHour) {
+                        throw new Error(`Missing pricing data for Cassandra node group ${cassandraNodeGroup.name} with instance type ${cassandraNodeGroup.instanceType}`);
+                    }
+                }
+                
                 for (const rds of resourceInfo.rdsInstances) {
                     if (!rds.pricePerHour) {
                         throw new Error(`Missing instance pricing data for RDS instance ${rds.name} with instance class ${rds.instanceClass}`);
                     }
                     if (!rds.storagePricePerGBMonth) {
                         throw new Error(`Missing storage pricing data for RDS instance ${rds.name} with storage type ${rds.storageType || 'standard'}`);
+                    }
+                }
+                
+                for (const openSearch of resourceInfo.openSearchInstances) {
+                    if (!openSearch.pricePerHour) {
+                        throw new Error(`Missing instance pricing data for OpenSearch domain ${openSearch.name} with instance type ${openSearch.instanceType}`);
+                    }
+                    if (!openSearch.storagePricePerGBMonth) {
+                        throw new Error(`Missing storage pricing data for OpenSearch domain ${openSearch.name}`);
                     }
                 }
 
@@ -343,10 +426,18 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
         totalMonthlyCost += info.eksCluster.pricePerHour * 24 * 30;
     }
     
-    // Node group costs
+    // Node group costs (excluding Cassandra which is counted under Persistence)
     totalMonthlyCost += info.nodeGroups.reduce((sum, ng) => {
         if (!ng.pricePerHour) {
             throw new Error(`Missing pricing data for node group ${ng.name} in cost summary`);
+        }
+        return sum + (ng.pricePerHour * ng.nodeCount * 24 * 30);
+    }, 0);
+    
+    // Cassandra node group costs (will be shown under Persistence)
+    totalMonthlyCost += info.cassandraNodeGroups.reduce((sum, ng) => {
+        if (!ng.pricePerHour) {
+            throw new Error(`Missing pricing data for Cassandra node group ${ng.name} in cost summary`);
         }
         return sum + (ng.pricePerHour * ng.nodeCount * 24 * 30);
     }, 0);
@@ -362,16 +453,26 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
         totalMonthlyCost += instanceMonthlyPrice + storageMonthlyPrice;
     }
     
+    // OpenSearch costs
+    totalMonthlyCost += info.openSearchInstances.reduce((sum, os) => {
+        if (!os.pricePerHour || !os.storagePricePerGBMonth) {
+            throw new Error(`Missing pricing data for OpenSearch domain ${os.name} in cost summary`);
+        }
+        const instanceMonthlyPrice = os.pricePerHour * os.instanceCount * 24 * 30;
+        const storageMonthlyPrice = os.storageGB * os.storagePricePerGBMonth;
+        return sum + instanceMonthlyPrice + storageMonthlyPrice;
+    }, 0);
+    
     // Summary Section - Most Important Information
     md += `## Summary\n\n`;
     md += `### 💰 Total Estimated Monthly Cost\n`;
     md += `**$${totalMonthlyCost.toFixed(2)}**\n\n`;
     
     // Benchmark Target (State Transition Goal)
-    if (info.benchmarkWorkers?.soakTest) {
-        const runner = info.benchmarkWorkers.soakTest;
+    if (info.benchmarkWorkers) {
         md += `### 🎯 Benchmark Target\n`;
-        md += `- **Target Throughput:** ${runner.target} state transitions/second\n\n`;
+        md += `- **Target Throughput:** ${info.benchmarkWorkers.target} state transitions/second\n\n`;
+        md += `- **Namespaces:** ${info.benchmarkWorkers.namespaces}\n\n`;
     }
     
     md += `---\n\n`;
@@ -402,7 +503,7 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
         }
         md += `\n`;
         
-        // Total EKS cost
+        // Total EKS cost (excluding Cassandra node groups)
         let totalMonthlyNodeCost = info.nodeGroups.reduce((sum, ng) => {
             if (!ng.pricePerHour) {
                 throw new Error(`Missing pricing data for node group ${ng.name}`);
@@ -423,12 +524,35 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
         md += `- **Total EKS Monthly Cost:** $${totalEksCost.toFixed(2)}\n\n`;
     }
     
-    // RDS Instances
-    md += `## RDS (Persistence)\n`;
-    if (info.rdsInstances.length === 0) {
-        md += `- No RDS instances found\n\n`;
-    } else {
-        const rds = info.rdsInstances[0]; // Assuming there's one main RDS instance
+    // Persistence
+    md += `## Persistence\n`;
+    
+    // Cassandra Infrastructure (if present)
+    if (info.cassandraNodeGroups.length > 0) {
+        md += `### Cassandra\n`;
+        md += `| Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Monthly Cost |\n`;
+        md += `|--------------|------------|-------------|----------------|----------------|-------------|\n`;
+        
+        let totalCassandraCost = 0;
+        for (const ng of info.cassandraNodeGroups) {
+            if (!ng.pricePerHour) {
+                throw new Error(`Missing pricing data for Cassandra node group ${ng.name} with instance type ${ng.instanceType}`);
+            }
+            const nodePricePerHour = ng.pricePerHour;
+            const nodeMonthlyPrice = nodePricePerHour * 24 * 30;
+            const totalMonthlyPrice = nodeMonthlyPrice * ng.nodeCount;
+            totalCassandraCost += totalMonthlyPrice;
+            
+            const cpuRequest = ng.cpuRequest ? ng.cpuRequest.toString() : '-';
+            const memoryRequest = ng.memoryRequest || '-';
+            
+            md += `| ${ng.instanceType} | ${ng.nodeCount} | ${cpuRequest} | ${memoryRequest} | $${nodePricePerHour.toFixed(4)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
+        }
+    }
+    if (info.rdsInstances.length) {
+        md += `### RDS\n`;
+
+        const rds = info.rdsInstances[0];
         
         if (!rds.pricePerHour) {
             throw new Error(`Missing pricing data for RDS instance ${rds.name} with instance class ${rds.instanceClass}`);
@@ -447,6 +571,50 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
         md += `- **Instance Cost:** $${instanceMonthlyPrice.toFixed(2)}/month\n`;
         md += `- **Storage Cost:** $${storageMonthlyPrice.toFixed(2)}/month\n`;
         md += `- **Total Monthly Cost:** $${totalMonthlyPrice.toFixed(2)}\n\n`;
+    }
+    
+    // OpenSearch (for visibility when using Cassandra)
+    if (info.openSearchInstances.length > 0) {
+        md += `### OpenSearch\n`;
+        md += `| Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |\n`;
+        md += `|---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|\n`;
+        
+        for (const openSearch of info.openSearchInstances) {
+            if (!openSearch.pricePerHour || !openSearch.storagePricePerGBMonth) {
+                throw new Error(`Missing pricing data for OpenSearch domain ${openSearch.name}`);
+            }
+            
+            const instancePricePerHour = openSearch.pricePerHour;
+            const instanceMonthlyPrice = instancePricePerHour * openSearch.instanceCount * 24 * 30;
+            const storageMonthlyPrice = openSearch.storageGB * openSearch.storagePricePerGBMonth;
+            const totalMonthlyPrice = instanceMonthlyPrice + storageMonthlyPrice;
+            
+            md += `| ${openSearch.instanceType} | ${openSearch.instanceCount} | ${openSearch.storageGB} GB | ${openSearch.storageGB * openSearch.instanceCount} GB | $${instanceMonthlyPrice.toFixed(2)} | $${storageMonthlyPrice.toFixed(2)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
+        }
+        md += `\n`;
+    }
+    
+    // Calculate total persistence cost
+    let totalPersistenceCost = 0;
+    
+    // RDS costs
+    if (info.rdsInstances.length > 0) {
+        const rds = info.rdsInstances[0];
+        totalPersistenceCost += (rds.pricePerHour! * 24 * 30) + (rds.storageGB * rds.storagePricePerGBMonth!);
+    }
+    
+    // Cassandra infrastructure costs
+    totalPersistenceCost += info.cassandraNodeGroups.reduce((sum, ng) => {
+        return sum + (ng.pricePerHour! * ng.nodeCount * 24 * 30);
+    }, 0);
+    
+    // OpenSearch costs
+    totalPersistenceCost += info.openSearchInstances.reduce((sum, os) => {
+        return sum + (os.pricePerHour! * os.instanceCount * 24 * 30) + (os.storageGB * os.storagePricePerGBMonth!);
+    }, 0);
+    
+    if (totalPersistenceCost > 0) {
+        md += `- **Total Persistence Monthly Cost:** $${totalPersistenceCost.toFixed(2)}\n\n`;
     }
     
     // Temporal Services
@@ -497,17 +665,6 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
         md += `|------|---------------|------------------|------------------|------------------|\n`;
         md += `| ${workers.pods} | ${workers.cpuRequest} | ${workers.memoryRequest} | ${workers.workflowPollers} | ${workers.activityPollers} |\n\n`;
     }
-    
-    // Benchmark Runner (formerly Soak Test)
-    md += `## Benchmark Runner\n\n`;
-    if (!info.benchmarkWorkers?.soakTest) {
-        md += `- No benchmark runner configuration found\n\n`;
-    } else {
-        const runner = info.benchmarkWorkers.soakTest;
-        md += `| Pods | CPU (Request) | Memory (Request) | Concurrent Workflows | Target |\n`;
-        md += `|------|---------------|------------------|--------------------- |--------|\n`;
-        md += `| ${runner.pods} | ${runner.cpuRequest} | ${runner.memoryRequest} | ${runner.concurrentWorkflows} | ${runner.target} |\n\n`;
-    }
-        
+            
     return md;
 } 

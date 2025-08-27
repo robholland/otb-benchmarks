@@ -11,6 +11,9 @@ config:
     Role: BenchmarkClusterAdmin
     VpcId: "vpc-0f0ab8c917df6d422"
   temporal-otb-benchmarks-cluster:Benchmark:
+    Namespaces: 3
+    ConcurrentWorkflows: 60
+    Target: 500
     Workers:
       Pods: 3
       CPU:
@@ -20,9 +23,7 @@ config:
       WorkflowPollers: 30
       ActivityPollers: 50
     SoakTest:
-      ConcurrentWorkflows: 30
       Pods: 1
-      Target: 500
       CPU:
         Request: 0.25
       Memory:

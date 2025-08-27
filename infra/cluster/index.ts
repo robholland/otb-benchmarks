@@ -38,6 +38,7 @@ const visibility = new VisibilityComponent("visibility", {
 
 // Create monitoring stack
 const monitoring = new MonitoringComponent("monitoring", {
+    config: benchmarkConfig,
 }, { provider: cluster.provider });
 
 // Create temporal namespace
@@ -63,20 +64,9 @@ const temporal = new k8s.helm.v4.Chart('temporal', {
                 },
                 namespaces: {
                     create: true,
-                    namespace: [
-                        {
-                            name: "benchmark-1",
-                            retention: '1d'
-                        },
-                        {
-                            name: "benchmark-2",
-                            retention: '1d'
-                        },
-                        {
-                            name: "benchmark-3",
-                            retention: '1d'
-                        }
-                    ]
+                    namespace: [...Array(benchmarkConfig.Namespaces)].map((_, i) => {
+                        return { name: `benchmark-${i+1}`, retention: '1d' }
+                    })
                 }
             },
             dynamicConfig: {
@@ -102,6 +92,11 @@ const temporal = new k8s.helm.v4.Chart('temporal', {
             tolerations: [
                 { key: "dedicated", operator: "Equal", value: "temporal", effect: "NoSchedule" }
             ],
+            metrics: {
+                serviceMonitor: {
+                    enabled: true,
+                },
+            },
             frontend: {
                 replicaCount: temporalConfig.Frontend.Pods,
                 resources: {
@@ -201,10 +196,11 @@ const benchmarkNamespace = new k8s.core.v1.Namespace(`benchmark`, {
     metadata: { name: `benchmark` } 
 }, { provider: cluster.provider });
 
-const benchmarkCharts = [1, 2, 3].map(i => {
+const benchmarkCharts = [...Array(benchmarkConfig.Namespaces)].map((_, i) => {
+    i += 1;
     return new k8s.helm.v4.Chart(`benchmark-workers-${i}`, {
         chart: "oci://ghcr.io/temporalio/charts/benchmark-workers",
-        version: "0.6.1",
+        version: "0.6.2",
         namespace: benchmarkNamespace.metadata.name,
         name: `benchmark-workers-${i}`,
         values: {
@@ -235,7 +231,7 @@ const benchmarkCharts = [1, 2, 3].map(i => {
                 workflowType: "DSL",
                 workflowArgs: '[{"a": "Sleep", "i": {"SleepTimeInSeconds": 1}, "r": 3},{"c": [{"a": "Sleep", "i": {"SleepTimeInSeconds": 1}, "r": 3}]}]',
                 replicaCount: benchmarkConfig.SoakTest.Pods,
-                concurrentWorkflows: benchmarkConfig.SoakTest.ConcurrentWorkflows,
+                concurrentWorkflows: Math.floor(benchmarkConfig.ConcurrentWorkflows / benchmarkConfig.Namespaces / benchmarkConfig.SoakTest.Pods),
                 resources: {
                     requests: {
                         cpu: benchmarkConfig.SoakTest.CPU.Request,

@@ -3,7 +3,7 @@
 ## Summary
 
 ### 💰 Total Estimated Monthly Cost
-**$2572.24**
+**$3431.20**
 
 ### 🎯 Benchmark Target
 - **Target Throughput:** 1500 state transitions/second
@@ -17,11 +17,11 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |
 |------|--------------|------------|----------------|-------------|
-| medium-mysql-worker | c5.large | 1 | $0.0850 | $61.20 |
-| medium-mysql-temporal | c5.2xlarge | 3 | $0.3400 | $734.40 |
-| medium-mysql | m5.2xlarge | 1 | $0.3840 | $276.48 |
+| cluster-temporal | c5.2xlarge | 3 | $0.3400 | $734.40 |
+| cluster-core | m5.2xlarge | 3 | $0.3840 | $829.44 |
+| cluster-worker | c5.xlarge | 3 | $0.1700 | $367.20 |
 
-- **Total EKS Monthly Cost:** $1072.08
+- **Total EKS Monthly Cost:** $1931.04
 
 ## RDS (Persistence)
 - **Engine:** mysql 8.4.5

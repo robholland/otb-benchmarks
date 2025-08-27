@@ -58,6 +58,8 @@ class LocalAWSPricingService {
                 ec2: {},
                 rds: {},
                 rdsStorage: {},
+                openSearch: {},
+                openSearchStorage: {},
                 eks: {},
                 lastUpdated: new Date().toISOString()
             };
@@ -204,6 +206,95 @@ class LocalAWSPricingService {
                         console.warn(`Failed to download RDS pricing for ${region}:`, error);
                     }
                 }
+                // Download OpenSearch pricing
+                console.log("Downloading OpenSearch pricing data...");
+                for (const region of regions) {
+                    // Try both AmazonES (legacy) and AmazonOpenSearch service codes
+                    const openSearchUrls = [
+                        `https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonOpenSearch/current/${region}/index.json`,
+                        `https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonES/current/${region}/index.json`
+                    ];
+                    let openSearchData = null;
+                    for (const openSearchUrl of openSearchUrls) {
+                        try {
+                            openSearchData = yield this.downloadFile(openSearchUrl);
+                            console.log(`Successfully downloaded OpenSearch pricing from ${openSearchUrl}`);
+                            break; // Success, exit the inner loop
+                        }
+                        catch (error) {
+                            console.warn(`Failed to download from ${openSearchUrl}:`, error);
+                            continue; // Try the next URL
+                        }
+                    }
+                    if (!openSearchData) {
+                        console.warn(`Failed to download OpenSearch pricing for ${region} from all URLs`);
+                        continue; // Skip this region
+                    }
+                    try {
+                        const openSearchPricing = JSON.parse(openSearchData);
+                        pricingData.openSearch[region] = {};
+                        // Parse OpenSearch pricing data
+                        for (const [sku, product] of Object.entries(openSearchPricing.products)) {
+                            // Use the correct productFamily name from the debug output
+                            if (product.productFamily === 'Amazon OpenSearch Service Instance' &&
+                                product.attributes.instanceType) {
+                                // Find the on-demand pricing
+                                const onDemandTerms = openSearchPricing.terms.OnDemand;
+                                if (onDemandTerms && onDemandTerms[sku]) {
+                                    const termData = onDemandTerms[sku];
+                                    if (termData) {
+                                        for (const [termKey, term] of Object.entries(termData)) {
+                                            if (term && term.priceDimensions) {
+                                                for (const priceDimension of Object.values(term.priceDimensions)) {
+                                                    if (priceDimension &&
+                                                        priceDimension.unit === 'Hrs' &&
+                                                        priceDimension.pricePerUnit &&
+                                                        priceDimension.pricePerUnit.USD) {
+                                                        const priceUSD = parseFloat(priceDimension.pricePerUnit.USD);
+                                                        if (!isNaN(priceUSD) && priceUSD > 0) {
+                                                            const instanceType = product.attributes.instanceType;
+                                                            pricingData.openSearch[region][instanceType] = priceUSD;
+                                                        }
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // Parse OpenSearch storage pricing
+                            else if (product.productFamily === 'Amazon OpenSearch Service Volume') {
+                                const onDemandTerms = openSearchPricing.terms.OnDemand;
+                                if (onDemandTerms && onDemandTerms[sku]) {
+                                    const termData = onDemandTerms[sku];
+                                    if (termData) {
+                                        for (const [termKey, term] of Object.entries(termData)) {
+                                            if (term && term.priceDimensions) {
+                                                for (const priceDimension of Object.values(term.priceDimensions)) {
+                                                    if (priceDimension &&
+                                                        priceDimension.unit === 'GB-Mo' &&
+                                                        priceDimension.pricePerUnit &&
+                                                        priceDimension.pricePerUnit.USD) {
+                                                        const priceUSD = parseFloat(priceDimension.pricePerUnit.USD);
+                                                        if (!isNaN(priceUSD) && priceUSD > 0) {
+                                                            pricingData.openSearchStorage[region] = priceUSD;
+                                                        }
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        console.log(`Downloaded OpenSearch pricing for ${region}: ${Object.keys(pricingData.openSearch[region]).length} instance types`);
+                    }
+                    catch (error) {
+                        console.warn(`Failed to parse OpenSearch pricing for ${region}:`, error);
+                    }
+                }
                 // Download EKS pricing (simpler as it's a flat rate per cluster per hour)
                 console.log("Setting EKS pricing data...");
                 // EKS pricing is $0.10 per cluster per hour in all regions
@@ -213,7 +304,8 @@ class LocalAWSPricingService {
                 // Validate that we have some pricing data
                 const hasEC2Data = Object.keys(pricingData.ec2).some(region => Object.keys(pricingData.ec2[region]).length > 0);
                 const hasRDSData = Object.keys(pricingData.rds).some(region => Object.keys(pricingData.rds[region]).length > 0);
-                if (!hasEC2Data && !hasRDSData) {
+                const hasOpenSearchData = Object.keys(pricingData.openSearch).some(region => Object.keys(pricingData.openSearch[region]).length > 0);
+                if (!hasEC2Data && !hasRDSData && !hasOpenSearchData) {
                     throw new Error("Failed to download any pricing data from AWS");
                 }
                 // Save the pricing data
@@ -410,6 +502,37 @@ class LocalAWSPricingService {
             const price = this.pricingData.eks[region];
             if (price === undefined) {
                 throw new Error(`No EKS pricing data available for region: ${region}`);
+            }
+            return price;
+        });
+    }
+    getOpenSearchPricing(instanceType, region) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.loadPricingData();
+            if (!this.pricingData.openSearch) {
+                throw new Error(`No OpenSearch pricing data available - please refresh pricing data`);
+            }
+            const regionData = this.pricingData.openSearch[region];
+            if (!regionData) {
+                throw new Error(`No OpenSearch pricing data available for region: ${region}`);
+            }
+            const price = regionData[instanceType];
+            if (price === undefined) {
+                const availableTypes = Object.keys(regionData);
+                throw new Error(`No OpenSearch pricing data available for instance type '${instanceType}' in region '${region}'. Available types: ${availableTypes.join(', ')}`);
+            }
+            return price;
+        });
+    }
+    getOpenSearchStoragePricing(region) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.loadPricingData();
+            if (!this.pricingData.openSearchStorage) {
+                throw new Error(`No OpenSearch storage pricing data available - please refresh pricing data`);
+            }
+            const price = this.pricingData.openSearchStorage[region];
+            if (price === undefined) {
+                throw new Error(`No OpenSearch storage pricing data available for region: ${region}`);
             }
             return price;
         });

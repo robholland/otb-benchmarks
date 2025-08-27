@@ -109,6 +109,9 @@ export interface Cluster {
 }
 
 export interface BenchmarkConfig {
+  Namespaces: number;
+  Target: number;
+  ConcurrentWorkflows: number;
   Workers: {
     Pods: number;
     WorkflowPollers: number;
@@ -122,8 +125,6 @@ export interface BenchmarkConfig {
   };
   SoakTest: {
     Pods: number;
-    ConcurrentWorkflows: number;
-    Target: number;
     CPU: {
       Request: number;
     };
