@@ -122,7 +122,7 @@ new PolicyPack("pricing", {
                 
                 // Initialize pricing service
                 const region = awsConfig?.Region || 'us-east-1';
-                const pricingService = new LocalAWSPricingService();
+                const pricingService = new LocalAWSPricingService(region);
                 
                 // Initialize resource info collection
                 const resourceInfo: ResourceInfo = {

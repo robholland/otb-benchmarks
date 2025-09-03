@@ -117,9 +117,12 @@ interface AWSPricingFile {
  */
 export class LocalAWSPricingService {
     private pricingData: PricingDataCache | null = null;
-    private readonly dataFile = path.join(PRICING_DATA_DIR, "aws-pricing.json");
+    private readonly dataFile: string;
+    private readonly region: string;
 
-    constructor() {
+    constructor(region?: string) {
+        this.region = region || 'us-east-1';
+        this.dataFile = path.join(PRICING_DATA_DIR, `aws-pricing-${this.region}.json`);
         this.ensureDataDirectory();
     }
 
@@ -165,8 +168,8 @@ export class LocalAWSPricingService {
             lastUpdated: new Date().toISOString()
         };
 
-        // Regions to download pricing for
-        const regions = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'eu-west-1'];
+        // Only download pricing for the configured region
+        const regions = [this.region];
 
         try {
             // Download EC2 pricing for each region
@@ -417,9 +420,7 @@ export class LocalAWSPricingService {
             // Download EKS pricing (simpler as it's a flat rate per cluster per hour)
             console.log("Setting EKS pricing data...");
             // EKS pricing is $0.10 per cluster per hour in all regions
-            for (const region of regions) {
-                pricingData.eks[region] = 0.10;
-            }
+            pricingData.eks[this.region] = 0.10;
 
             // Validate that we have some pricing data
             const hasEC2Data = Object.keys(pricingData.ec2).some(region => Object.keys(pricingData.ec2[region]).length > 0);

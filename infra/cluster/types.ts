@@ -57,6 +57,7 @@ export interface DynamicConfig {
   FrontendRPS?: number;
   FrontendNamespaceRPS?: number;
   MatchingRPS?: number;
+  HistoryRPS?: number;
 }
 
 export interface TemporalConfig {

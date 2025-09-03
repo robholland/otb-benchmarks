@@ -140,7 +140,7 @@ export class PersistenceComponent extends pulumi.ComponentResource {
             parent: this 
         });
 
-        const cassandra = new k8s.helm.v4.Chart('cassandra', {
+        const cassandra = new k8s.helm.v3.Release('cassandra', {
             chart: "cassandra",
             version: "12.3.10",
             namespace: "cassandra",
@@ -158,7 +158,11 @@ export class PersistenceComponent extends pulumi.ComponentResource {
                     "commitStorageClass": "gp3",
                     "commitLogMountPath": "/bitnami/cassandra/commitlog",
                 },
+                "global": {
+                    "security": { "allowInsecureImages": true },
+                },
                 "image": {
+                    "repository": "bitnamilegacy/cassandra",
                     "tag": "4.1",
                 },
                 "resources": {
@@ -178,7 +182,17 @@ export class PersistenceComponent extends pulumi.ComponentResource {
                 "tolerations": [
                     { key: "dedicated", operator: "Equal", value: "cassandra", effect: "NoSchedule" },
                 ],
+                "livenessProbe": {
+                    "initialDelaySeconds": 30,
+                },
+                "readinessProbe": {
+                    "initialDelaySeconds": 30,
+                },
+                "cluster": {
+                    "numTokens": 8,
+                },
             },
+            timeout: 60 * 60,
         }, { 
             dependsOn: [namespace], 
             provider: cluster.provider,
@@ -188,7 +202,7 @@ export class PersistenceComponent extends pulumi.ComponentResource {
         return pulumi.output({
             driver: "cassandra",
             cassandra: {
-                hosts: ["cassandra.cassandra.svc.cluster.local"],
+                hosts: [pulumi.interpolate`${cassandra.status.name}.${cassandra.status.namespace}.svc.cluster.local`],
                 port: 9042,
                 keyspace: "temporal_persistence",
                 user: "temporal",

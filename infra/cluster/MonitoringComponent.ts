@@ -116,14 +116,14 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                         rules: [
                              {
                                 alert: "TemporalServiceResourceExhausted",
-                                expr: 'sum(rate(service_errors_resource_exhausted[1m])) by (service_name, resource_exhausted_scope) > 0',
+                                expr: 'sum(rate(service_errors_resource_exhausted[1m])) by (service_name, resource_exhausted_scope, resource_exhausted_cause) > 0',
                                 for: "30s",
                                 labels: {
                                     severity: "warning",
                                     service: "{{ $labels.service_name }}",
                                 },
                                 annotations: {
-                                    summary: "Temporal {{ $labels.service_name }} experiencing resource exhausted errors, scope: {{ $labels.resource_exhausted_scope }}",
+                                    summary: "Temporal {{ $labels.service_name }} experiencing resource exhausted errors, scope: {{ $labels.resource_exhausted_scope }}, cause: {{ $labels.resource_exhausted_cause }}",
                                     description: "{{ $labels.service_name }} service is returning resource exhausted errors for scope {{ $labels.resource_exhausted_scope }} at {{ $value }} errors per second",
                                 },
                             },
@@ -150,19 +150,6 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                                 annotations: {
                                     summary: "High CPU usage in Benchmark",
                                     description: "Benchmark pod {{ $labels.pod }} is using more than 85% of requested CPU",
-                                },
-                            },
-                            {
-                                alert: "BenchmarkExcessCPULimits",
-                                expr: 'avg(benchmark:service:cpu_usage_ratio) < 0.6',
-                                for: "1m",
-                                labels: {
-                                    impact: "slo",
-                                    severity: "warning",
-                                },
-                                annotations: {
-                                    summary: "Excess CPU limits for Benchmark",
-                                    description: "Benchmark pods are using less than 60% of requested CPU on average",
                                 },
                             },
                             {
@@ -199,7 +186,7 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                         rules: [
                             {
                                 alert: "TemporalHighWorkflowTaskLatency",
-                                expr: 'histogram_quantile(0.95, sum by(le) (rate(temporal_workflow_task_schedule_to_start_latency_bucket{exported_namespace=~"benchmark_.*"}[1m]))) > 0.150',
+                                expr: 'histogram_quantile(0.95, sum by(exported_namespace, le) (rate(temporal_workflow_task_schedule_to_start_latency_bucket{exported_namespace=~"benchmark_.*"}[1m]))) > 0.150',
                                 for: "1m",
                                 labels: {
                                     impact: "slo",
@@ -207,12 +194,12 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                                 },
                                 annotations: {
                                     summary: "High workflow task latency detected",
-                                    description: "95th percentile of workflow task schedule-to-start latency in the benchmark namespace is above 150ms",
+                                    description: "95th percentile of workflow task schedule-to-start latency in the {{ $labels.exported_namespace }} namespace is above 150ms",
                                 },
                             },
                             {
                                 alert: "TemporalHighActivityTaskLatency",
-                                expr: 'histogram_quantile(0.95, sum by(le) (rate(temporal_activity_schedule_to_start_latency_bucket{exported_namespace=~"benchmark_.*"}[1m]))) > 0.150',
+                                expr: 'histogram_quantile(0.95, sum by(exported_namespace, le) (rate(temporal_activity_schedule_to_start_latency_bucket{exported_namespace=~"benchmark_.*"}[1m]))) > 0.150',
                                 for: "1m",
                                 labels: {
                                     impact: "slo",
@@ -220,7 +207,7 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                                 },
                                 annotations: {
                                     summary: "High activity task latency detected",
-                                    description: "95th percentile of activity task schedule-to-start latency in the benchmark namespace is above 150ms",
+                                    description: "95th percentile of activity task schedule-to-start latency in the {{ $labels.exported_namespace }} namespace is above 150ms",
                                 },
                             },
                             {
@@ -234,6 +221,19 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                                 annotations: {
                                     summary: "High CPU usage in Temporal {{ .service | title }}",
                                     description: "{{ .service | title }} pod {{ $labels.pod }} is using more than 85% of requested CPU",
+                                },
+                            },
+                            {
+                                alert: "CassandraHighCPUUsage",
+                                expr: 'cassandra:service:cpu_usage_ratio > 0.66',
+                                for: "1m",
+                                labels: {
+                                    impact: "slo",
+                                    severity: "warning",
+                                },
+                                annotations: {
+                                    summary: "High CPU usage in Cassandra",
+                                    description: "Cassandra pod {{ $labels.pod }} is using more than 66% of requested CPU",
                                 },
                             },
                             {

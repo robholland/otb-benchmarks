@@ -85,6 +85,11 @@ const temporal = new k8s.helm.v4.Chart('temporal', {
                         { value: temporalConfig.DynamicConfig.MatchingRPS },
                     ],
                 }),
+                ...(temporalConfig.DynamicConfig?.HistoryRPS && {
+                    "history.rps": [
+                        { value: temporalConfig.DynamicConfig.HistoryRPS },
+                    ],
+                }),
             },
             nodeSelector: {
                 dedicated: "temporal"
