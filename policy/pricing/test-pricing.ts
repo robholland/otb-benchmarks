@@ -40,6 +40,21 @@ async function testPricingData() {
         const eksPrice = await pricingService.getEKSPricing(testRegion);
         console.log(`EKS cluster in ${testRegion}: $${eksPrice}/hour`);
         
+        console.log('\n=== Testing EBS Storage Pricing ===');
+        try {
+            const ebsGp3Price = await pricingService.getEBSStoragePricing('gp3', testRegion);
+            console.log(`EBS gp3 storage in ${testRegion}: $${ebsGp3Price}/GB-month`);
+        } catch (error) {
+            console.log(`EBS gp3 pricing error: ${error}`);
+        }
+        
+        try {
+            const ebsGp2Price = await pricingService.getEBSStoragePricing('gp2', testRegion);
+            console.log(`EBS gp2 storage in ${testRegion}: $${ebsGp2Price}/GB-month`);
+        } catch (error) {
+            console.log(`EBS gp2 pricing error: ${error}`);
+        }
+        
     } catch (error) {
         console.error('Error testing pricing data:', error);
         process.exit(1);

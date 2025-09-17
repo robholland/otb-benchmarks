@@ -36,6 +36,12 @@ interface OpenSearchStoragePricingData {
     [region: string]: number;
 }
 
+interface EBSPricingData {
+    [region: string]: {
+        [storageType: string]: number;
+    };
+}
+
 interface EKSPricingData {
     [region: string]: number;
 }
@@ -46,6 +52,7 @@ interface PricingDataCache {
     rdsStorage: RDSStoragePricingData;
     openSearch: OpenSearchPricingData;
     openSearchStorage: OpenSearchStoragePricingData;
+    ebs: EBSPricingData;
     eks: EKSPricingData;
     lastUpdated: string;
 }
@@ -67,6 +74,7 @@ interface AWSPricingProduct {
         databaseEngine?: string;
         deploymentOption?: string;
         volumeType?: string;
+        volumeApiName?: string;
         storageMedia?: string;
         usagetype?: string;
         operation?: string;
@@ -164,6 +172,7 @@ export class LocalAWSPricingService {
             rdsStorage: {},
             openSearch: {},
             openSearchStorage: {},
+            ebs: {},
             eks: {},
             lastUpdated: new Date().toISOString()
         };
@@ -417,6 +426,83 @@ export class LocalAWSPricingService {
                 }
             }
 
+            // Download EBS pricing for each region
+            console.log("Downloading EBS pricing data...");
+            for (const region of regions) {
+                const ebsUrl = `https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/${region}/index.json`;
+                try {
+                    const ebsData = await this.downloadFile(ebsUrl);
+                    const ebsPricing: AWSPricingFile = JSON.parse(ebsData);
+                    
+                    pricingData.ebs[region] = {};
+                    
+                    // Parse EBS pricing data
+                    for (const [sku, product] of Object.entries(ebsPricing.products)) {
+                        if (product.productFamily === 'Storage' && 
+                            product.attributes.volumeType) {
+                            
+                            // More lenient filtering - just require Storage family and volumeType
+                            if (product.attributes.volumeType.toLowerCase().includes('gp') || 
+                                product.attributes.volumeType.toLowerCase().includes('io') ||
+                                product.attributes.volumeType === 'General Purpose' ||
+                                product.attributes.volumeType === 'Provisioned IOPS') {
+                            
+                                const storageType = product.attributes.volumeType;
+                            
+                            // Find the on-demand pricing
+                            const onDemandTerms = ebsPricing.terms.OnDemand;
+                            if (onDemandTerms && onDemandTerms[sku]) {
+                                const termData = onDemandTerms[sku];
+                                if (termData) {
+                                    for (const [termKey, term] of Object.entries(termData)) {
+                                        if (term && term.priceDimensions) {
+                                            for (const priceDimension of Object.values(term.priceDimensions)) {
+                                                if (priceDimension && 
+                                                    priceDimension.unit === 'GB-Mo' && 
+                                                    priceDimension.pricePerUnit && 
+                                                    priceDimension.pricePerUnit.USD) {
+                                                    const priceUSD = parseFloat(priceDimension.pricePerUnit.USD);
+                                                    if (!isNaN(priceUSD)) {
+                                        // Map AWS storage types to our simplified names using volumeApiName if available
+                                        let mappedStorageType = storageType;
+                                        const volumeApiName = product.attributes.volumeApiName;
+                                        
+                                        if (volumeApiName) {
+                                            // Prefer volumeApiName for more accurate mapping
+                                            mappedStorageType = volumeApiName;
+                                        } else {
+                                            // Fallback to volumeType mapping
+                                            if (storageType === 'General Purpose') mappedStorageType = 'gp2';
+                                            else if (storageType === 'General Purpose (SSD)') mappedStorageType = 'gp2';
+                                            else if (storageType === 'gp3') mappedStorageType = 'gp3';
+                                            else if (storageType === 'Provisioned IOPS') mappedStorageType = 'io1';
+                                            else if (storageType === 'io1') mappedStorageType = 'io1';
+                                            else if (storageType === 'io2') mappedStorageType = 'io2';
+                                        }
+                                                        
+                                                        // Only store if we don't have this storage type yet, or if this price is better
+                                                        if (!pricingData.ebs[region][mappedStorageType] || 
+                                                            pricingData.ebs[region][mappedStorageType] > priceUSD) {
+                                                            pricingData.ebs[region][mappedStorageType] = priceUSD;
+                                                        }
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            }
+                        }
+                    }
+                    
+                    console.log(`Downloaded EBS pricing for ${region}: ${Object.keys(pricingData.ebs[region]).length} storage types`);
+                } catch (error) {
+                    console.warn(`Failed to download EBS pricing for ${region}:`, error);
+                }
+            }
+
             // Download EKS pricing (simpler as it's a flat rate per cluster per hour)
             console.log("Setting EKS pricing data...");
             // EKS pricing is $0.10 per cluster per hour in all regions
@@ -426,8 +512,9 @@ export class LocalAWSPricingService {
             const hasEC2Data = Object.keys(pricingData.ec2).some(region => Object.keys(pricingData.ec2[region]).length > 0);
             const hasRDSData = Object.keys(pricingData.rds).some(region => Object.keys(pricingData.rds[region]).length > 0);
             const hasOpenSearchData = Object.keys(pricingData.openSearch).some(region => Object.keys(pricingData.openSearch[region]).length > 0);
+            const hasEBSData = Object.keys(pricingData.ebs).some(region => Object.keys(pricingData.ebs[region]).length > 0);
             
-            if (!hasEC2Data && !hasRDSData && !hasOpenSearchData) {
+            if (!hasEC2Data && !hasRDSData && !hasOpenSearchData && !hasEBSData) {
                 throw new Error("Failed to download any pricing data from AWS");
             }
 
@@ -686,6 +773,77 @@ export class LocalAWSPricingService {
         }
         
         return price;
+    }
+
+    async getEBSStoragePricing(storageType: string, region: string): Promise<number> {
+        await this.loadPricingData();
+        
+        const regionData = this.pricingData!.ebs[region];
+        if (!regionData) {
+            throw new Error(`No EBS storage pricing data available for region: ${region}`);
+        }
+        
+        // Get available storage types for this region
+        const availableStorageTypes = Object.keys(regionData);
+        
+        // Normalize the storage type name to match AWS format
+        const normalizedStorageType = this.normalizeEBSStorageType(storageType, availableStorageTypes);
+        
+        const price = regionData[normalizedStorageType];
+        if (price === undefined) {
+            throw new Error(`No EBS storage pricing data available for storage type: ${storageType} in region: ${region}. Available storage types: ${availableStorageTypes.join(', ')}`);
+        }
+        
+        return price;
+    }
+
+    /**
+     * Normalize EBS storage type name to match AWS pricing data format
+     * Handles case conversion and common EBS storage type variations
+     */
+    private normalizeEBSStorageType(inputStorageType: string, availableStorageTypes: string[]): string {
+        const lowerInput = inputStorageType.toLowerCase();
+        
+        // Direct case-insensitive match first
+        for (const storageType of availableStorageTypes) {
+            if (storageType.toLowerCase() === lowerInput) {
+                return storageType;
+            }
+        }
+        
+        // Handle common EBS storage type name mappings
+        const storageTypeMappings: { [key: string]: string[] } = {
+            'gp2': ['gp2'],
+            'gp3': ['gp3'],
+            'io1': ['io1'],
+            'io2': ['io2'],
+            'st1': ['st1'],
+            'sc1': ['sc1']
+        };
+        
+        // Try to find a mapping for the lowercase input
+        const possibleStorageTypes = storageTypeMappings[lowerInput];
+        if (possibleStorageTypes) {
+            for (const possibleStorageType of possibleStorageTypes) {
+                // Case-insensitive search in available storage types
+                for (const availableStorageType of availableStorageTypes) {
+                    if (availableStorageType.toLowerCase() === possibleStorageType.toLowerCase()) {
+                        return availableStorageType;
+                    }
+                }
+            }
+        }
+        
+        // If no exact match found, try partial matching (case-insensitive)
+        for (const storageType of availableStorageTypes) {
+            const lowerStorageType = storageType.toLowerCase();
+            if (lowerStorageType.includes(lowerInput) || lowerInput.includes(lowerStorageType)) {
+                return storageType;
+            }
+        }
+        
+        // No match found
+        throw new Error(`Storage type '${inputStorageType}' not found. Available storage types: ${availableStorageTypes.join(', ')}`);
     }
 
     // Method to force refresh the pricing data

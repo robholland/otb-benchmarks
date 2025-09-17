@@ -27,7 +27,7 @@ new policy_1.PolicyPack("pricing", {
             description: "Analyzes all resources in the stack to generate a comprehensive pricing report",
             enforcementLevel: "advisory",
             validateStack: (args, reportViolation) => __awaiter(void 0, void 0, void 0, function* () {
-                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
                 const stackName = pulumi.getStack();
                 // Access configuration directly using Pulumi Config API
                 const config = new pulumi.Config();
@@ -37,7 +37,7 @@ new policy_1.PolicyPack("pricing", {
                 const persistenceConfig = config.getObject('Persistence');
                 // Initialize pricing service
                 const region = (awsConfig === null || awsConfig === void 0 ? void 0 : awsConfig.Region) || 'us-east-1';
-                const pricingService = new pricing_data_1.LocalAWSPricingService();
+                const pricingService = new pricing_data_1.LocalAWSPricingService(region);
                 // Initialize resource info collection
                 const resourceInfo = {
                     nodeGroups: [],
@@ -97,13 +97,21 @@ new policy_1.PolicyPack("pricing", {
                             }
                             // If this is a Cassandra node group, store it separately
                             if (purpose === 'cassandra') {
+                                // Parse storage sizes
+                                const commitLogStorageGB = parseStorageSize(((_a = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.Cassandra) === null || _a === void 0 ? void 0 : _a.CommitLogStorage) || '0');
+                                const dataStorageGB = parseStorageSize(((_b = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.Cassandra) === null || _b === void 0 ? void 0 : _b.DataStorage) || '0');
+                                // Get EBS storage pricing (both use gp3 according to PersistenceComponent.ts)
+                                const storagePricePerGBMonth = yield pricingService.getEBSStoragePricing('gp3', region);
                                 resourceInfo.cassandraNodeGroups.push({
                                     name: resource.name,
                                     instanceType,
                                     nodeCount,
                                     pricePerHour: nodePrice,
-                                    cpuRequest: (_b = (_a = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.Cassandra) === null || _a === void 0 ? void 0 : _a.CPU) === null || _b === void 0 ? void 0 : _b.Request,
-                                    memoryRequest: (_d = (_c = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.Cassandra) === null || _c === void 0 ? void 0 : _c.Memory) === null || _d === void 0 ? void 0 : _d.Request
+                                    cpuRequest: (_d = (_c = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.Cassandra) === null || _c === void 0 ? void 0 : _c.CPU) === null || _d === void 0 ? void 0 : _d.Request,
+                                    memoryRequest: (_f = (_e = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.Cassandra) === null || _e === void 0 ? void 0 : _e.Memory) === null || _f === void 0 ? void 0 : _f.Request,
+                                    commitLogStorageGB,
+                                    dataStorageGB,
+                                    storagePricePerGBMonth
                                 });
                             }
                             else {
@@ -120,7 +128,7 @@ new policy_1.PolicyPack("pricing", {
                         case "aws:rds/instance:Instance":
                             const rdsInstance = resource.props;
                             const instanceClass = rdsInstance.instanceClass || "db.t3.medium";
-                            const engine = rdsInstance.engine || ((_e = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.RDS) === null || _e === void 0 ? void 0 : _e.Engine) || "postgres";
+                            const engine = rdsInstance.engine || ((_g = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.RDS) === null || _g === void 0 ? void 0 : _g.Engine) || "postgres";
                             const rdsPrice = yield pricingService.getRDSPricing(instanceClass, engine, region);
                             resourceInfo.rdsInstances.push({
                                 name: resource.name,
@@ -137,8 +145,8 @@ new policy_1.PolicyPack("pricing", {
                         case "aws:opensearch/domain:Domain":
                             const openSearchDomain = resource.props;
                             const clusterConfig = openSearchDomain.clusterConfig || {};
-                            const osInstanceType = clusterConfig.instanceType || ((_g = (_f = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.Visibility) === null || _f === void 0 ? void 0 : _f.OpenSearch) === null || _g === void 0 ? void 0 : _g.InstanceType) || "m5.large.search";
-                            const osInstanceCount = clusterConfig.instanceCount || (((_h = awsConfig === null || awsConfig === void 0 ? void 0 : awsConfig.AvailabilityZones) === null || _h === void 0 ? void 0 : _h.length) || 3);
+                            const osInstanceType = clusterConfig.instanceType || ((_j = (_h = persistenceConfig === null || persistenceConfig === void 0 ? void 0 : persistenceConfig.Visibility) === null || _h === void 0 ? void 0 : _h.OpenSearch) === null || _j === void 0 ? void 0 : _j.InstanceType) || "m5.large.search";
+                            const osInstanceCount = clusterConfig.instanceCount || (((_k = awsConfig === null || awsConfig === void 0 ? void 0 : awsConfig.AvailabilityZones) === null || _k === void 0 ? void 0 : _k.length) || 3);
                             const ebsOptions = openSearchDomain.ebsOptions || {};
                             const osStorageGB = ebsOptions.volumeSize || 100;
                             const openSearchPrice = yield pricingService.getOpenSearchPricing(osInstanceType, region);
@@ -174,8 +182,8 @@ new policy_1.PolicyPack("pricing", {
                     if (temporalConfig.Frontend) {
                         const frontend = temporalConfig.Frontend;
                         const pods = frontend.Pods || 0;
-                        const cpuPerPod = parseCpu(((_j = frontend.CPU) === null || _j === void 0 ? void 0 : _j.Request) || 0);
-                        const memoryPerPod = parseMem(((_k = frontend.Memory) === null || _k === void 0 ? void 0 : _k.Request) || '0Mi');
+                        const cpuPerPod = parseCpu(((_l = frontend.CPU) === null || _l === void 0 ? void 0 : _l.Request) || 0);
+                        const memoryPerPod = parseMem(((_m = frontend.Memory) === null || _m === void 0 ? void 0 : _m.Request) || '0Mi');
                         resourceInfo.temporalServices.frontend = {
                             pods,
                             cpuPerPod,
@@ -185,8 +193,8 @@ new policy_1.PolicyPack("pricing", {
                     if (temporalConfig.History) {
                         const history = temporalConfig.History;
                         const pods = history.Pods || 0;
-                        const cpuPerPod = parseCpu(((_l = history.CPU) === null || _l === void 0 ? void 0 : _l.Request) || 0);
-                        const memoryPerPod = parseMem(((_m = history.Memory) === null || _m === void 0 ? void 0 : _m.Request) || '0Mi');
+                        const cpuPerPod = parseCpu(((_o = history.CPU) === null || _o === void 0 ? void 0 : _o.Request) || 0);
+                        const memoryPerPod = parseMem(((_p = history.Memory) === null || _p === void 0 ? void 0 : _p.Request) || '0Mi');
                         resourceInfo.temporalServices.history = {
                             pods,
                             cpuPerPod,
@@ -197,8 +205,8 @@ new policy_1.PolicyPack("pricing", {
                     if (temporalConfig.Matching) {
                         const matching = temporalConfig.Matching;
                         const pods = matching.Pods || 0;
-                        const cpuPerPod = parseCpu(((_o = matching.CPU) === null || _o === void 0 ? void 0 : _o.Request) || 0);
-                        const memoryPerPod = parseMem(((_p = matching.Memory) === null || _p === void 0 ? void 0 : _p.Request) || '0Mi');
+                        const cpuPerPod = parseCpu(((_q = matching.CPU) === null || _q === void 0 ? void 0 : _q.Request) || 0);
+                        const memoryPerPod = parseMem(((_r = matching.Memory) === null || _r === void 0 ? void 0 : _r.Request) || '0Mi');
                         resourceInfo.temporalServices.matching = {
                             pods,
                             cpuPerPod,
@@ -208,8 +216,8 @@ new policy_1.PolicyPack("pricing", {
                     if (temporalConfig.Worker) {
                         const worker = temporalConfig.Worker;
                         const pods = worker.Pods || 0;
-                        const cpuPerPod = parseCpu(((_q = worker.CPU) === null || _q === void 0 ? void 0 : _q.Request) || 0);
-                        const memoryPerPod = parseMem(((_r = worker.Memory) === null || _r === void 0 ? void 0 : _r.Request) || '0Mi');
+                        const cpuPerPod = parseCpu(((_s = worker.CPU) === null || _s === void 0 ? void 0 : _s.Request) || 0);
+                        const memoryPerPod = parseMem(((_t = worker.Memory) === null || _t === void 0 ? void 0 : _t.Request) || '0Mi');
                         resourceInfo.temporalServices.worker = {
                             pods,
                             cpuPerPod,
@@ -219,13 +227,16 @@ new policy_1.PolicyPack("pricing", {
                 }
                 // Process Benchmark configuration
                 if (benchmarkConfig) {
-                    resourceInfo.benchmarkWorkers = {};
+                    resourceInfo.benchmarkWorkers = {
+                        namespaces: benchmarkConfig.Namespaces || 0,
+                        target: benchmarkConfig.Target || 0
+                    };
                     if (benchmarkConfig.Workers) {
                         const workers = benchmarkConfig.Workers;
                         resourceInfo.benchmarkWorkers.workers = {
                             pods: workers.Pods || 0,
-                            cpuRequest: ((_s = workers.CPU) === null || _s === void 0 ? void 0 : _s.Request) || '-',
-                            memoryRequest: ((_t = workers.Memory) === null || _t === void 0 ? void 0 : _t.Request) || '-',
+                            cpuRequest: ((_u = workers.CPU) === null || _u === void 0 ? void 0 : _u.Request) || '-',
+                            memoryRequest: ((_v = workers.Memory) === null || _v === void 0 ? void 0 : _v.Request) || '-',
                             workflowPollers: workers.WorkflowPollers || 0,
                             activityPollers: workers.ActivityPollers || 0
                         };
@@ -234,10 +245,8 @@ new policy_1.PolicyPack("pricing", {
                         const soakTest = benchmarkConfig.SoakTest;
                         resourceInfo.benchmarkWorkers.soakTest = {
                             pods: soakTest.Pods || 0,
-                            cpuRequest: ((_u = soakTest.CPU) === null || _u === void 0 ? void 0 : _u.Request) || '-',
-                            memoryRequest: ((_v = soakTest.Memory) === null || _v === void 0 ? void 0 : _v.Request) || '-',
-                            concurrentWorkflows: soakTest.ConcurrentWorkflows || 0,
-                            target: soakTest.Target || 0
+                            cpuRequest: ((_w = soakTest.CPU) === null || _w === void 0 ? void 0 : _w.Request) || '-',
+                            memoryRequest: ((_x = soakTest.Memory) === null || _x === void 0 ? void 0 : _x.Request) || '-',
                         };
                     }
                 }
@@ -258,6 +267,9 @@ new policy_1.PolicyPack("pricing", {
                 for (const cassandraNodeGroup of resourceInfo.cassandraNodeGroups) {
                     if (!cassandraNodeGroup.pricePerHour) {
                         throw new Error(`Missing pricing data for Cassandra node group ${cassandraNodeGroup.name} with instance type ${cassandraNodeGroup.instanceType}`);
+                    }
+                    if (!cassandraNodeGroup.storagePricePerGBMonth) {
+                        throw new Error(`Missing storage pricing data for Cassandra node group ${cassandraNodeGroup.name}`);
                     }
                 }
                 for (const rds of resourceInfo.rdsInstances) {
@@ -295,9 +307,34 @@ new policy_1.PolicyPack("pricing", {
         },
     ],
 });
+// Helper function to parse storage size strings (e.g., "1Gi", "1Ti", "100Mi") to GB
+function parseStorageSize(sizeStr) {
+    if (!sizeStr || sizeStr === '0')
+        return 0;
+    const sizeMatch = sizeStr.match(/^(\d+(?:\.\d+)?)(Mi|Gi|Ti|GB|TB)?$/);
+    if (!sizeMatch) {
+        throw new Error(`Invalid storage size format: ${sizeStr}`);
+    }
+    const value = parseFloat(sizeMatch[1]);
+    const unit = sizeMatch[2] || 'GB';
+    switch (unit) {
+        case 'Mi':
+            return value / 1024; // MB to GB
+        case 'Gi':
+            return value; // Gi is approximately GB
+        case 'Ti':
+            return value * 1024; // Ti to GB
+        case 'GB':
+            return value;
+        case 'TB':
+            return value * 1024; // TB to GB
+        default:
+            throw new Error(`Unsupported storage unit: ${unit}`);
+    }
+}
 // Helper function to generate the markdown report
 function generateMarkdownReport(stackName, info) {
-    var _a, _b, _c, _d;
+    var _a, _b;
     let md = '';
     // Header
     md += `# Cluster Stack: ${stackName}\n\n`;
@@ -321,7 +358,14 @@ function generateMarkdownReport(stackName, info) {
         if (!ng.pricePerHour) {
             throw new Error(`Missing pricing data for Cassandra node group ${ng.name} in cost summary`);
         }
-        return sum + (ng.pricePerHour * ng.nodeCount * 24 * 30);
+        const instanceCost = ng.pricePerHour * ng.nodeCount * 24 * 30;
+        // Add storage costs for each node
+        let storageCost = 0;
+        if (ng.storagePricePerGBMonth && ng.commitLogStorageGB && ng.dataStorageGB) {
+            const storagePerNode = ng.commitLogStorageGB + ng.dataStorageGB;
+            storageCost = storagePerNode * ng.nodeCount * ng.storagePricePerGBMonth;
+        }
+        return sum + instanceCost + storageCost;
     }, 0);
     // RDS costs
     if (info.rdsInstances.length > 0) {
@@ -347,10 +391,10 @@ function generateMarkdownReport(stackName, info) {
     md += `### 💰 Total Estimated Monthly Cost\n`;
     md += `**$${totalMonthlyCost.toFixed(2)}**\n\n`;
     // Benchmark Target (State Transition Goal)
-    if ((_a = info.benchmarkWorkers) === null || _a === void 0 ? void 0 : _a.soakTest) {
-        const runner = info.benchmarkWorkers.soakTest;
+    if (info.benchmarkWorkers) {
         md += `### 🎯 Benchmark Target\n`;
-        md += `- **Target Throughput:** ${runner.target} state transitions/second\n\n`;
+        md += `- **Target Throughput:** ${info.benchmarkWorkers.target} state transitions/second\n\n`;
+        md += `- **Namespaces:** ${info.benchmarkWorkers.namespaces}\n\n`;
     }
     md += `---\n\n`;
     // AWS Region
@@ -400,9 +444,9 @@ function generateMarkdownReport(stackName, info) {
     md += `## Persistence\n`;
     // Cassandra Infrastructure (if present)
     if (info.cassandraNodeGroups.length > 0) {
-        md += `### Cassandra Infrastructure\n`;
-        md += `| Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Monthly Cost |\n`;
-        md += `|--------------|------------|-------------|----------------|----------------|-------------|\n`;
+        md += `### Cassandra\n`;
+        md += `| Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Storage/Node | Storage Cost/Node/Month | Total Monthly Cost |\n`;
+        md += `|--------------|------------|-------------|----------------|----------------|--------------|-------------------------|--------------------|\n`;
         let totalCassandraCost = 0;
         for (const ng of info.cassandraNodeGroups) {
             if (!ng.pricePerHour) {
@@ -410,13 +454,33 @@ function generateMarkdownReport(stackName, info) {
             }
             const nodePricePerHour = ng.pricePerHour;
             const nodeMonthlyPrice = nodePricePerHour * 24 * 30;
-            const totalMonthlyPrice = nodeMonthlyPrice * ng.nodeCount;
+            // Calculate storage costs
+            let storagePerNode = 0;
+            let storageMonthlyPricePerNode = 0;
+            if (ng.commitLogStorageGB && ng.dataStorageGB && ng.storagePricePerGBMonth) {
+                storagePerNode = ng.commitLogStorageGB + ng.dataStorageGB;
+                storageMonthlyPricePerNode = storagePerNode * ng.storagePricePerGBMonth;
+            }
+            const totalMonthlyPricePerNode = nodeMonthlyPrice + storageMonthlyPricePerNode;
+            const totalMonthlyPrice = totalMonthlyPricePerNode * ng.nodeCount;
             totalCassandraCost += totalMonthlyPrice;
             const cpuRequest = ng.cpuRequest ? ng.cpuRequest.toString() : '-';
             const memoryRequest = ng.memoryRequest || '-';
-            md += `| ${ng.instanceType} | ${ng.nodeCount} | ${cpuRequest} | ${memoryRequest} | $${nodePricePerHour.toFixed(4)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
+            const storageDisplay = storagePerNode > 0 ? `${storagePerNode.toFixed(1)} GB` : '-';
+            md += `| ${ng.instanceType} | ${ng.nodeCount} | ${cpuRequest} | ${memoryRequest} | $${nodePricePerHour.toFixed(4)} | ${storageDisplay} | $${storageMonthlyPricePerNode.toFixed(2)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
         }
-        md += `\n- **Total Cassandra Infrastructure Cost:** $${totalCassandraCost.toFixed(2)}/month\n\n`;
+        md += `\n`;
+        // Add storage details
+        if (info.cassandraNodeGroups.some(ng => ng.commitLogStorageGB || ng.dataStorageGB)) {
+            md += `**Storage Details:**\n`;
+            for (const ng of info.cassandraNodeGroups) {
+                if (ng.commitLogStorageGB || ng.dataStorageGB) {
+                    md += `- **Per Node:** ${ng.commitLogStorageGB || 0} GB commit log + ${ng.dataStorageGB || 0} GB data storage (gp3)\n`;
+                    md += `- **Total Cluster:** ${((ng.commitLogStorageGB || 0) + (ng.dataStorageGB || 0)) * ng.nodeCount} GB across ${ng.nodeCount} nodes\n`;
+                }
+            }
+            md += `\n`;
+        }
     }
     if (info.rdsInstances.length) {
         md += `### RDS\n`;
@@ -439,7 +503,7 @@ function generateMarkdownReport(stackName, info) {
     }
     // OpenSearch (for visibility when using Cassandra)
     if (info.openSearchInstances.length > 0) {
-        md += `### OpenSearch (Visibility)\n`;
+        md += `### OpenSearch\n`;
         md += `| Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |\n`;
         md += `|---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|\n`;
         for (const openSearch of info.openSearchInstances) {
@@ -461,9 +525,16 @@ function generateMarkdownReport(stackName, info) {
         const rds = info.rdsInstances[0];
         totalPersistenceCost += (rds.pricePerHour * 24 * 30) + (rds.storageGB * rds.storagePricePerGBMonth);
     }
-    // Cassandra infrastructure costs
+    // Cassandra infrastructure costs (including storage)
     totalPersistenceCost += info.cassandraNodeGroups.reduce((sum, ng) => {
-        return sum + (ng.pricePerHour * ng.nodeCount * 24 * 30);
+        const instanceCost = ng.pricePerHour * ng.nodeCount * 24 * 30;
+        // Add storage costs for each node
+        let storageCost = 0;
+        if (ng.storagePricePerGBMonth && ng.commitLogStorageGB && ng.dataStorageGB) {
+            const storagePerNode = ng.commitLogStorageGB + ng.dataStorageGB;
+            storageCost = storagePerNode * ng.nodeCount * ng.storagePricePerGBMonth;
+        }
+        return sum + instanceCost + storageCost;
     }, 0);
     // OpenSearch costs
     totalPersistenceCost += info.openSearchInstances.reduce((sum, os) => {
@@ -502,13 +573,13 @@ function generateMarkdownReport(stackName, info) {
         }
         md += `\n`;
         // History shards
-        if ((_b = info.temporalServices.history) === null || _b === void 0 ? void 0 : _b.shards) {
+        if ((_a = info.temporalServices.history) === null || _a === void 0 ? void 0 : _a.shards) {
             md += `- **History Shards:** ${info.temporalServices.history.shards}\n\n`;
         }
     }
     // Benchmark Workers
     md += `## Benchmark Workers\n\n`;
-    if (!((_c = info.benchmarkWorkers) === null || _c === void 0 ? void 0 : _c.workers)) {
+    if (!((_b = info.benchmarkWorkers) === null || _b === void 0 ? void 0 : _b.workers)) {
         md += `- No benchmark workers configuration found\n\n`;
     }
     else {
@@ -516,17 +587,6 @@ function generateMarkdownReport(stackName, info) {
         md += `| Pods | CPU (Request) | Memory (Request) | Workflow Pollers | Activity Pollers |\n`;
         md += `|------|---------------|------------------|------------------|------------------|\n`;
         md += `| ${workers.pods} | ${workers.cpuRequest} | ${workers.memoryRequest} | ${workers.workflowPollers} | ${workers.activityPollers} |\n\n`;
-    }
-    // Benchmark Runner (formerly Soak Test)
-    md += `## Benchmark Runner\n\n`;
-    if (!((_d = info.benchmarkWorkers) === null || _d === void 0 ? void 0 : _d.soakTest)) {
-        md += `- No benchmark runner configuration found\n\n`;
-    }
-    else {
-        const runner = info.benchmarkWorkers.soakTest;
-        md += `| Pods | CPU (Request) | Memory (Request) | Concurrent Workflows | Target |\n`;
-        md += `|------|---------------|------------------|--------------------- |--------|\n`;
-        md += `| ${runner.pods} | ${runner.cpuRequest} | ${runner.memoryRequest} | ${runner.concurrentWorkflows} | ${runner.target} |\n\n`;
     }
     return md;
 }

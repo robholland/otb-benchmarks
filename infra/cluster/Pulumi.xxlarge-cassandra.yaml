@@ -3,6 +3,10 @@ config:
   aws:region: us-west-2
   aws:assumeRole:
     roleArn: arn:aws:iam::912773994842:role/BenchmarkClusterAdmin
+  aws:defaultTags:
+    tags:
+      cluster: xxlarge-cassandra
+      clusterSize: xxlarge
   temporal-otb-benchmarks-cluster:AWS:
     Region: us-west-2
     AvailabilityZones: ["us-west-2a", "us-west-2b", "us-west-2c"]
@@ -10,6 +14,7 @@ config:
     RdsSubnetGroupName: "temporal-benchmark-rds-d034419"
     Role: BenchmarkClusterAdmin
     VpcId: "vpc-0f0ab8c917df6d422"
+    PrometheusId: ws-cc07bde8-10f1-4360-99a9-a5ed8f9a0657
   temporal-otb-benchmarks-cluster:Benchmark:
     Namespaces: 12
     ConcurrentWorkflows: 5500
@@ -35,7 +40,7 @@ config:
       TemporalNodeType: c5.4xlarge
       TemporalNodeCount: 16
       WorkerNodeType: c5.xlarge
-      WorkerNodeCount: 6
+      WorkerNodeCount: 8
   temporal-otb-benchmarks-cluster:Persistence:
     Cassandra:
       NodeType: c5.2xlarge
@@ -44,6 +49,8 @@ config:
         Request: 8
       Memory:
         Request: 16Gi
+      CommitLogStorage: 1Gi
+      DataStorage: 1Ti
     Visibility:
       OpenSearch:
         InstanceType: m5.large.search
@@ -61,7 +68,7 @@ config:
       CPU:
         Request: 8
       Memory:
-        Request: 4Gi
+        Request: 8Gi
     Matching:
       Pods: 9
       CPU:

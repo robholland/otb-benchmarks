@@ -7,6 +7,7 @@ export interface AWSConfig {
   RdsSubnetGroupName: string;
   PrivateSubnetIds: string[];
   AvailabilityZones: string[];
+  PrometheusId: string;
 }
 
 export interface ClusterConfig {
@@ -40,6 +41,8 @@ export interface RDSPersistenceConfig {
 export interface CassandraPersistenceConfig {
   NodeType: string;
   NodeCount: number;
+  CommitLogStorage: string;
+  DataStorage: string;
   CPU: {
     Request: number;
   };

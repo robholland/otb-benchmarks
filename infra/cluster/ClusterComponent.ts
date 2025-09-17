@@ -37,6 +37,7 @@ export class ClusterComponent extends pulumi.ComponentResource {
                 enabled: false,
             },
             createInstanceRole: true,
+            createOidcProvider: true,
         }, { parent: this });
 
         const coreNodeGroup = new eks.NodeGroupV2(name + '-core', {

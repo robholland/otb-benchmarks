@@ -3,7 +3,7 @@
 ## Summary
 
 ### 💰 Total Estimated Monthly Cost
-**$8941.64**
+**$9561.94**
 
 ### 🎯 Benchmark Target
 - **Target Throughput:** 10000 state transitions/second
@@ -19,23 +19,28 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |
 |------|--------------|------------|----------------|-------------|
-| cluster-temporal | c5.4xlarge | 8 | $0.6800 | $3916.80 |
-| cluster-worker | c5.xlarge | 4 | $0.1700 | $489.60 |
 | cluster-core | r5.xlarge | 3 | $0.2520 | $544.32 |
+| cluster-worker | c5.xlarge | 4 | $0.1700 | $489.60 |
+| cluster-temporal | c5.4xlarge | 8 | $0.6800 | $3916.80 |
 
 - **Total EKS Monthly Cost:** $4950.72
 
 ## Persistence
 ### Cassandra
-| Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Monthly Cost |
-|--------------|------------|-------------|----------------|----------------|-------------|
-| c5.2xlarge | 15 | 8 | 16Gi | $0.3400 | $3672.00 |
+| Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Storage/Node | Storage Cost/Node/Month | Total Monthly Cost |
+|--------------|------------|-------------|----------------|----------------|--------------|-------------------------|--------------------|
+| c5.2xlarge | 15 | 8 | 16Gi | $0.3400 | 513.0 GB | $41.04 | $4287.60 |
+
+**Storage Details:**
+- **Per Node:** 1 GB commit log + 512 GB data storage (gp3)
+- **Total Cluster:** 7695 GB across 15 nodes
+
 ### OpenSearch
 | Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |
 |---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|
-| m5.large.search | 3 | 100 GB | 300 GB | $306.72 | $12.20 | $318.92 |
+| m5.large.search | 3 | 100 GB | 300 GB | $306.72 | $16.90 | $323.62 |
 
-- **Total Persistence Monthly Cost:** $3990.92
+- **Total Persistence Monthly Cost:** $4611.22
 
 ## Temporal Services
 

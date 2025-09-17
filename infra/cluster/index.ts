@@ -38,6 +38,8 @@ const visibility = new VisibilityComponent("visibility", {
 
 // Create monitoring stack
 const monitoring = new MonitoringComponent("monitoring", {
+    awsConfig: awsConfig,
+    cluster: cluster,
     config: benchmarkConfig,
 }, { provider: cluster.provider });
 

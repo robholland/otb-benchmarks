@@ -155,7 +155,9 @@ export class PersistenceComponent extends pulumi.ComponentResource {
                 "replicaCount": config.NodeCount,
                 "persistence": {
                     "storageClass": "gp3",
+                    "size": config.DataStorage,
                     "commitStorageClass": "gp3",
+                    "commitLogSize": config.CommitLogStorage,
                     "commitLogMountPath": "/bitnami/cassandra/commitlog",
                 },
                 "global": {
@@ -192,7 +194,7 @@ export class PersistenceComponent extends pulumi.ComponentResource {
                     "numTokens": 8,
                 },
             },
-            timeout: 60 * 60,
+            timeout: config.NodeCount * 5 * 60,
         }, { 
             dependsOn: [namespace], 
             provider: cluster.provider,

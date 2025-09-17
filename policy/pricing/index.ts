@@ -39,6 +39,9 @@ interface ResourceInfo {
         pricePerHour?: number;
         cpuRequest?: number;
         memoryRequest?: string;
+        commitLogStorageGB?: number;
+        dataStorageGB?: number;
+        storagePricePerGBMonth?: number;
     }>;
     rdsInstances: Array<{
         name: string;
@@ -190,13 +193,23 @@ new PolicyPack("pricing", {
                             
                             // If this is a Cassandra node group, store it separately
                             if (purpose === 'cassandra') {
+                                // Parse storage sizes
+                                const commitLogStorageGB = parseStorageSize(persistenceConfig?.Cassandra?.CommitLogStorage || '0');
+                                const dataStorageGB = parseStorageSize(persistenceConfig?.Cassandra?.DataStorage || '0');
+                                
+                                // Get EBS storage pricing (both use gp3 according to PersistenceComponent.ts)
+                                const storagePricePerGBMonth = await pricingService.getEBSStoragePricing('gp3', region);
+                                
                                 resourceInfo.cassandraNodeGroups.push({
                                     name: resource.name,
                                     instanceType,
                                     nodeCount,
                                     pricePerHour: nodePrice,
                                     cpuRequest: persistenceConfig?.Cassandra?.CPU?.Request,
-                                    memoryRequest: persistenceConfig?.Cassandra?.Memory?.Request
+                                    memoryRequest: persistenceConfig?.Cassandra?.Memory?.Request,
+                                    commitLogStorageGB,
+                                    dataStorageGB,
+                                    storagePricePerGBMonth
                                 });
                             } else {
                                 // Store regular node groups (non-Cassandra)
@@ -367,6 +380,9 @@ new PolicyPack("pricing", {
                     if (!cassandraNodeGroup.pricePerHour) {
                         throw new Error(`Missing pricing data for Cassandra node group ${cassandraNodeGroup.name} with instance type ${cassandraNodeGroup.instanceType}`);
                     }
+                    if (!cassandraNodeGroup.storagePricePerGBMonth) {
+                        throw new Error(`Missing storage pricing data for Cassandra node group ${cassandraNodeGroup.name}`);
+                    }
                 }
                 
                 for (const rds of resourceInfo.rdsInstances) {
@@ -409,6 +425,34 @@ new PolicyPack("pricing", {
     ],
 });
 
+// Helper function to parse storage size strings (e.g., "1Gi", "1Ti", "100Mi") to GB
+function parseStorageSize(sizeStr: string): number {
+    if (!sizeStr || sizeStr === '0') return 0;
+    
+    const sizeMatch = sizeStr.match(/^(\d+(?:\.\d+)?)(Mi|Gi|Ti|GB|TB)?$/);
+    if (!sizeMatch) {
+        throw new Error(`Invalid storage size format: ${sizeStr}`);
+    }
+    
+    const value = parseFloat(sizeMatch[1]);
+    const unit = sizeMatch[2] || 'GB';
+    
+    switch (unit) {
+        case 'Mi':
+            return value / 1024; // MB to GB
+        case 'Gi':
+            return value; // Gi is approximately GB
+        case 'Ti':
+            return value * 1024; // Ti to GB
+        case 'GB':
+            return value;
+        case 'TB':
+            return value * 1024; // TB to GB
+        default:
+            throw new Error(`Unsupported storage unit: ${unit}`);
+    }
+}
+
 // Helper function to generate the markdown report
 function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
     let md = '';
@@ -439,7 +483,16 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
         if (!ng.pricePerHour) {
             throw new Error(`Missing pricing data for Cassandra node group ${ng.name} in cost summary`);
         }
-        return sum + (ng.pricePerHour * ng.nodeCount * 24 * 30);
+        const instanceCost = ng.pricePerHour * ng.nodeCount * 24 * 30;
+        
+        // Add storage costs for each node
+        let storageCost = 0;
+        if (ng.storagePricePerGBMonth && ng.commitLogStorageGB && ng.dataStorageGB) {
+            const storagePerNode = ng.commitLogStorageGB + ng.dataStorageGB;
+            storageCost = storagePerNode * ng.nodeCount * ng.storagePricePerGBMonth;
+        }
+        
+        return sum + instanceCost + storageCost;
     }, 0);
 
     // RDS costs
@@ -530,8 +583,8 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
     // Cassandra Infrastructure (if present)
     if (info.cassandraNodeGroups.length > 0) {
         md += `### Cassandra\n`;
-        md += `| Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Monthly Cost |\n`;
-        md += `|--------------|------------|-------------|----------------|----------------|-------------|\n`;
+        md += `| Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Storage/Node | Storage Cost/Node/Month | Total Monthly Cost |\n`;
+        md += `|--------------|------------|-------------|----------------|----------------|--------------|-------------------------|--------------------|\n`;
         
         let totalCassandraCost = 0;
         for (const ng of info.cassandraNodeGroups) {
@@ -540,13 +593,38 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
             }
             const nodePricePerHour = ng.pricePerHour;
             const nodeMonthlyPrice = nodePricePerHour * 24 * 30;
-            const totalMonthlyPrice = nodeMonthlyPrice * ng.nodeCount;
+            
+            // Calculate storage costs
+            let storagePerNode = 0;
+            let storageMonthlyPricePerNode = 0;
+            if (ng.commitLogStorageGB && ng.dataStorageGB && ng.storagePricePerGBMonth) {
+                storagePerNode = ng.commitLogStorageGB + ng.dataStorageGB;
+                storageMonthlyPricePerNode = storagePerNode * ng.storagePricePerGBMonth;
+            }
+            
+            const totalMonthlyPricePerNode = nodeMonthlyPrice + storageMonthlyPricePerNode;
+            const totalMonthlyPrice = totalMonthlyPricePerNode * ng.nodeCount;
             totalCassandraCost += totalMonthlyPrice;
             
             const cpuRequest = ng.cpuRequest ? ng.cpuRequest.toString() : '-';
             const memoryRequest = ng.memoryRequest || '-';
+            const storageDisplay = storagePerNode > 0 ? `${storagePerNode.toFixed(1)} GB` : '-';
             
-            md += `| ${ng.instanceType} | ${ng.nodeCount} | ${cpuRequest} | ${memoryRequest} | $${nodePricePerHour.toFixed(4)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
+            md += `| ${ng.instanceType} | ${ng.nodeCount} | ${cpuRequest} | ${memoryRequest} | $${nodePricePerHour.toFixed(4)} | ${storageDisplay} | $${storageMonthlyPricePerNode.toFixed(2)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
+        }
+        
+        md += `\n`;
+        
+        // Add storage details
+        if (info.cassandraNodeGroups.some(ng => ng.commitLogStorageGB || ng.dataStorageGB)) {
+            md += `**Storage Details:**\n`;
+            for (const ng of info.cassandraNodeGroups) {
+                if (ng.commitLogStorageGB || ng.dataStorageGB) {
+                    md += `- **Per Node:** ${ng.commitLogStorageGB || 0} GB commit log + ${ng.dataStorageGB || 0} GB data storage (gp3)\n`;
+                    md += `- **Total Cluster:** ${((ng.commitLogStorageGB || 0) + (ng.dataStorageGB || 0)) * ng.nodeCount} GB across ${ng.nodeCount} nodes\n`;
+                }
+            }
+            md += `\n`;
         }
     }
     if (info.rdsInstances.length) {
@@ -603,9 +681,18 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
         totalPersistenceCost += (rds.pricePerHour! * 24 * 30) + (rds.storageGB * rds.storagePricePerGBMonth!);
     }
     
-    // Cassandra infrastructure costs
+    // Cassandra infrastructure costs (including storage)
     totalPersistenceCost += info.cassandraNodeGroups.reduce((sum, ng) => {
-        return sum + (ng.pricePerHour! * ng.nodeCount * 24 * 30);
+        const instanceCost = ng.pricePerHour! * ng.nodeCount * 24 * 30;
+        
+        // Add storage costs for each node
+        let storageCost = 0;
+        if (ng.storagePricePerGBMonth && ng.commitLogStorageGB && ng.dataStorageGB) {
+            const storagePerNode = ng.commitLogStorageGB + ng.dataStorageGB;
+            storageCost = storagePerNode * ng.nodeCount * ng.storagePricePerGBMonth;
+        }
+        
+        return sum + instanceCost + storageCost;
     }, 0);
     
     // OpenSearch costs

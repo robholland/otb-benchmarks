@@ -1,7 +1,12 @@
 import * as pulumi from "@pulumi/pulumi";
+import * as aws from "@pulumi/aws";
 import * as k8s from "@pulumi/kubernetes";
+import { ClusterComponent } from "./ClusterComponent";
+import { AWSConfig } from "./types";
 
 export interface MonitoringComponentArgs {
+    awsConfig: AWSConfig;
+    cluster: ClusterComponent;
     config: any;
 }
 
@@ -11,17 +16,61 @@ export class MonitoringComponent extends pulumi.ComponentResource {
     public readonly prometheusStack: k8s.helm.v4.Chart;
     public readonly alertRules: k8s.apiextensions.CustomResource;
 
+    private readonly awsConfig: AWSConfig;
     private readonly benchmarkConfig: any;
+    private readonly cluster: ClusterComponent;
 
     constructor(name: string, args: MonitoringComponentArgs, opts?: pulumi.ComponentResourceOptions) {
         super("benchmark:infrastructure:Monitoring", name, {}, opts);
 
+        this.awsConfig = args.awsConfig;
         this.benchmarkConfig = args.config;
+        this.cluster = args.cluster;
 
         // Create monitoring namespace
         this.namespace = new k8s.core.v1.Namespace("monitoring", { 
             metadata: { name: "monitoring" } 
         }, { parent: this });
+
+        const oidcProviderUrl = this.cluster.eksCluster.oidcProviderUrl;
+        const oidcProviderArn = this.cluster.eksCluster.oidcProviderArn;
+
+        const role = pulumi.all([oidcProviderUrl, oidcProviderArn, this.namespace.metadata.name]).apply(([url, arn, namespace]) => {
+            const aud = url.replace("https://","") + ":aud";
+            const sub = url.replace("https://","") + ":sub";
+            return new aws.iam.Role("amp-writer-role", {
+                assumeRolePolicy: JSON.stringify({
+                    Version: "2012-10-17",
+                    Statement: [
+                        {
+                            Effect: "Allow",
+                            Principal: {
+                                Federated: arn,
+                            },
+                            Action: "sts:AssumeRoleWithWebIdentity",
+                            Condition: {
+                                StringEquals: {
+                                    [`${aud}`]: `sts.amazonaws.com`,
+                                    [`${sub}`]: `system:serviceaccount:${namespace}:prometheus-remote-write`,
+                                },
+                            },
+                        }
+                    ],
+                }),
+            });
+        });
+
+        new aws.iam.RolePolicyAttachment("amp-writer-query-policy", {
+            role: role.name,
+            policyArn: "arn:aws:iam::aws:policy/AmazonPrometheusQueryAccess",
+        });
+
+        new aws.iam.RolePolicyAttachment("amp-writer-write-policy", {
+            role: role.name,
+            policyArn: "arn:aws:iam::aws:policy/AmazonPrometheusRemoteWriteAccess",
+        });
+
+        const prometheus = aws.amp.Workspace.get("prometheus", this.awsConfig.PrometheusId);
 
         // Install Kube Prometheus Stack
         this.prometheusStack = new k8s.helm.v4.Chart('kube-prometheus-stack', {
@@ -32,18 +81,53 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                 repo: "https://prometheus-community.github.io/helm-charts",
             },
             values: {
-              prometheus: {
-                  prometheusSpec: {
-                      podMonitorSelectorNilUsesHelmValues: false,
-                      serviceMonitorSelectorNilUsesHelmValues: false,
-                      ruleSelectorNilUsesHelmValues: false,
-                  },
-              },
-              prometheusOperator: {
-                  tls: {
-                      enabled: false,
-                  }
-              },
+                prometheus: {
+                    serviceAccount: {
+                        create: true,
+                        name: "prometheus-remote-write",
+                        annotations: {
+                            "eks.amazonaws.com/role-arn": role.arn,
+                        },
+                    },
+                    prometheusSpec: {
+                        podMonitorSelectorNilUsesHelmValues: false,
+                        serviceMonitorSelectorNilUsesHelmValues: false,
+                        ruleSelectorNilUsesHelmValues: false,
+                        externalLabels: {
+                            "cluster": pulumi.getStack(),
+                            "clusterSize": pulumi.getStack().match(/small|medium|x*large/)?.[0],
+                        },
+                        remoteWrite: [
+                            {
+                                url: pulumi.interpolate `${prometheus.prometheusEndpoint}/api/v1/remote_write`,
+                                sigv4: {
+                                    region: this.awsConfig.Region,
+                                },
+                                queueConfig: {
+                                    maxSamplesPerSend: 1000,
+                                    maxShards: 200,
+                                    capacity: 2500,
+                                },
+                                writeRelabelConfigs: [
+                                    {
+                                        sourceLabels: ["exported_namespace"],
+                                        regex: '(.+)',
+                                        targetLabel: "namespace",
+                                    },
+                                    {
+                                        regex: "exported_namespace",
+                                        action: "labeldrop",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                },
+                prometheusOperator: {
+                    tls: {
+                        enabled: false,
+                    }
+                },
             },
         }, { 
             parent: this,
