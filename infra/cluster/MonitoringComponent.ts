@@ -70,8 +70,6 @@ export class MonitoringComponent extends pulumi.ComponentResource {
             policyArn: "arn:aws:iam::aws:policy/AmazonPrometheusRemoteWriteAccess",
         });
 
-        const prometheus = aws.amp.Workspace.get("prometheus", this.awsConfig.PrometheusId);
-
         // Install Kube Prometheus Stack
         this.prometheusStack = new k8s.helm.v4.Chart('kube-prometheus-stack', {
             chart: "kube-prometheus-stack",
@@ -85,9 +83,10 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                     serviceAccount: {
                         create: true,
                         name: "prometheus-remote-write",
-                        annotations: {
-                            "eks.amazonaws.com/role-arn": role.arn,
-                        },
+                        // We perform this as a transformation, otherwise we block the chart being rendered during preview
+                        // annotations: {
+                        //     "eks.amazonaws.com/role-arn": role.arn,
+                        // },
                     },
                     prometheusSpec: {
                         podMonitorSelectorNilUsesHelmValues: false,
@@ -99,7 +98,7 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                         },
                         remoteWrite: [
                             {
-                                url: pulumi.interpolate `${prometheus.prometheusEndpoint}/api/v1/remote_write`,
+                                url: `${this.awsConfig.PrometheusEndpoint}/api/v1/remote_write`,
                                 sigv4: {
                                     region: this.awsConfig.Region,
                                 },
@@ -131,7 +130,16 @@ export class MonitoringComponent extends pulumi.ComponentResource {
             },
         }, { 
             parent: this,
-            dependsOn: [this.namespace],
+            dependsOn: [this.namespace, role],
+            transformations: [
+                (obj: any) => {
+                    if (obj.kind === "ServiceAccount" && obj.metadata?.name === "prometheus-remote-write") {
+                        obj.metadata.annotations = obj.metadata.annotations || {};
+                        obj.metadata.annotations["eks.amazonaws.com/role-arn"] = role.arn;
+                    }
+                    return obj;
+                }
+            ],
         });
 
         // Add Prometheus Rules for benchmark monitoring

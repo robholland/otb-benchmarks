@@ -46,9 +46,9 @@ config:
       NodeType: c5.2xlarge
       NodeCount: 60
       CPU:
-        Request: 8
+        Limit: 8
       Memory:
-        Request: 16Gi
+        Limit: 16Gi
       CommitLogStorage: 512Mi
       DataStorage: 512Gi
     Visibility:

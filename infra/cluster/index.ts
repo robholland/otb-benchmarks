@@ -51,7 +51,7 @@ const temporalNamespace = new k8s.core.v1.Namespace("temporal", {
 // Install Temporal
 const temporal = new k8s.helm.v4.Chart('temporal', {
     chart: "temporal",
-    version: "0.62.0",
+    version: "0.66.0",
     namespace: temporalNamespace.metadata.name,
     repositoryOpts: {
         repo: "https://go.temporal.io/helm-charts",

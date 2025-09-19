@@ -213,8 +213,8 @@ new PolicyPack("pricing", {
                                     instanceType,
                                     nodeCount,
                                     pricePerHour: nodePrice,
-                                    cpuRequest: persistenceConfig?.Cassandra?.CPU?.Request,
-                                    memoryRequest: persistenceConfig?.Cassandra?.Memory?.Request,
+                                    cpuRequest: persistenceConfig?.Cassandra?.CPU?.Limit,
+                                    memoryRequest: persistenceConfig?.Cassandra?.Memory?.Limit,
                                     commitLogStorageGB,
                                     dataStorageGB,
                                     storagePricePerGBMonth

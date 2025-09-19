@@ -20,7 +20,7 @@ export class PersistenceComponent extends pulumi.ComponentResource {
         if (args.config.RDS != undefined) {
             this.values = this.createRdsPersistence(name, args.config.RDS, args.cluster, args.awsConfig, args.shards);
         } else if (args.config.Cassandra != undefined) {
-            this.values = this.createCassandraPersistence(name, args.config.Cassandra, args.cluster);
+            this.values = this.createCassandraPersistence(name, args.config.Cassandra, args.cluster, args.awsConfig);
         } else {
             throw new Error("invalid persistence config");
         }
@@ -132,7 +132,7 @@ export class PersistenceComponent extends pulumi.ComponentResource {
         });
     }
 
-    private createCassandraPersistence(name: string, config: CassandraPersistenceConfig, cluster: ClusterComponent): pulumi.Output<any> {
+    private createCassandraPersistence(name: string, config: CassandraPersistenceConfig, cluster: ClusterComponent, awsConfig: AWSConfig): pulumi.Output<any> {
         const namespace = new k8s.core.v1.Namespace("cassandra", { 
             metadata: { name: "cassandra" } 
         }, { 
@@ -140,76 +140,137 @@ export class PersistenceComponent extends pulumi.ComponentResource {
             parent: this 
         });
 
-        const cassandra = new k8s.helm.v3.Release('cassandra', {
-            chart: "cassandra",
-            version: "12.3.10",
+        const cassOperator = new k8s.helm.v3.Release('cass-operator', {
+            chart: "cass-operator",
+            version: "0.61.0",
             namespace: "cassandra",
             repositoryOpts: {
-                repo: "https://charts.bitnami.com/bitnami",
+                repo: "https://helm.k8ssandra.io/stable",
             },
             values: {
-                "dbUser": {
-                    "user": "temporal",
-                    "password": "temporal",
+                admissionWebhooks: {
+                    enabled: false,
                 },
-                "replicaCount": config.NodeCount,
-                "persistence": {
-                    "storageClass": "gp3",
-                    "size": config.DataStorage,
-                    "commitStorageClass": "gp3",
-                    "commitLogSize": config.CommitLogStorage,
-                    "commitLogMountPath": "/bitnami/cassandra/commitlog",
-                },
-                "global": {
-                    "security": { "allowInsecureImages": true },
-                },
-                "image": {
-                    "repository": "bitnamilegacy/cassandra",
-                    "tag": "4.1",
-                },
-                "resources": {
-                    "requests": {
-                        "cpu": 1,
-                        "memory": "1Gi",
+            }
+        }, {
+            dependsOn: [namespace],
+            provider: cluster.provider,
+            parent: this
+        });
+
+        // Create the secret for the temporal user
+        const cassandraSecret = new k8s.core.v1.Secret('temporal-cassandra-secret', {
+            metadata: {
+                name: 'temporal-cassandra-secret',
+                namespace: 'cassandra',
+            },
+            type: 'Opaque',
+            stringData: {
+                username: 'temporal',
+                password: 'temporal',
+            },
+        }, {
+            provider: cluster.provider,
+            parent: this,
+        });
+
+        const cassandraDatacenter = new k8s.apiextensions.CustomResource('cassandra-datacenter', {
+            apiVersion: 'cassandra.datastax.com/v1beta1',
+            kind: 'CassandraDatacenter',
+            metadata: {
+                name: 'temporal-cassandra',
+                namespace: 'cassandra',
+                annotations: {
+                    "pulumi.com/waitFor": "condition=Ready",
+                    "pulumi.com/timeoutSeconds": (config.NodeCount * 5 * 60).toString(),
+                    "pulumi.com/patchForce": "true",
+                }
+            },
+            spec: {
+                clusterName: 'temporal',
+                datacenterName: 'dc1',
+                serverType: 'cassandra',
+                serverVersion: '4.1.3',
+                size: config.NodeCount,
+                superuserSecretName: 'temporal-cassandra-secret',
+                storageConfig: {
+                    cassandraDataVolumeClaimSpec: {
+                        storageClassName: 'gp3',
+                        accessModes: ['ReadWriteOnce'],
+                        resources: {
+                            requests: {
+                                storage: config.DataStorage,
+                            },
+                        },
                     },
-                    "limits": {
-                        "cpu": config.CPU.Request,
-                        "memory": config.Memory.Request,
+                    additionalVolumes: [
+                        {
+                            name: 'commitlog-volume',
+                            mountPath: '/var/lib/cassandra/commitlog',
+                            pvcSpec: {
+                                storageClassName: 'gp3',
+                                accessModes: ['ReadWriteOnce'],
+                                resources: {
+                                    requests: {
+                                        storage: config.CommitLogStorage,
+                                    },
+                                },
+                            },
+                        },
+                    ],
+                },
+                resources: {
+                    requests: {
+                        cpu: 1,
+                        memory: "1Gi",
+                    },
+                    limits: {
+                        cpu: config.CPU.Limit,
+                        memory: config.Memory.Limit,
                     },
                 },
-                "nodeSelector": {
-                    "dedicated": "cassandra"
-                },
-                "podAntiAffinityPreset": "hard",
-                "tolerations": [
-                    { key: "dedicated", operator: "Equal", value: "cassandra", effect: "NoSchedule" },
+                nodeSelector: { dedicated: 'cassandra' },
+                tolerations: [
+                    { key: 'dedicated', operator: 'Equal', value: 'cassandra', effect: 'NoSchedule' }
                 ],
-                "livenessProbe": {
-                    "initialDelaySeconds": 120,
+                racks: awsConfig.AvailabilityZones.map((zone, index) => ({
+                    name: `rack${index + 1}`,
+                    nodeAffinityLabels: {
+                        'topology.kubernetes.io/zone': zone,
+                    },
+                })),
+                podTemplateSpec: {
+                    spec: {
+                        containers: [
+                            { name: 'cassandra' },
+                        ],
+                    },
                 },
-                "readinessProbe": {
-                    "initialDelaySeconds": 120,
+                config: {
+                    'cassandra-yaml': {
+                        num_tokens: 8,
+                    },
                 },
-                "cluster": {
-                    "numTokens": 8,
+                managementApiAuth: {
+                    insecure: {},
                 },
             },
-            timeout: config.NodeCount * 5 * 60,
-        }, { 
-            dependsOn: [namespace], 
+        }, {
+            dependsOn: [cassOperator, cassandraSecret],
             provider: cluster.provider,
-            parent: this 
+            parent: this,
         });
 
         return pulumi.output({
             driver: "cassandra",
             cassandra: {
-                hosts: [pulumi.interpolate`${cassandra.status.name}.${cassandra.status.namespace}.svc.cluster.local`],
+                hosts: ['temporal-temporal-cassandra-service.cassandra.svc.cluster.local'],
                 port: 9042,
                 keyspace: "temporal_persistence",
                 user: "temporal",
                 password: "temporal",
-                replicationFactor: 3
+                replicationFactor: 3,
+                datacenter: 'dc1',
             }
         });
     }

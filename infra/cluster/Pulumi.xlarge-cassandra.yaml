@@ -14,7 +14,7 @@ config:
     RdsSubnetGroupName: "temporal-benchmark-rds-d034419"
     Role: BenchmarkClusterAdmin
     VpcId: "vpc-0f0ab8c917df6d422"
-    PrometheusId: ws-cc07bde8-10f1-4360-99a9-a5ed8f9a0657
+    PrometheusEndpoint: https://aps-workspaces.us-west-2.amazonaws.com/workspaces/ws-cc07bde8-10f1-4360-99a9-a5ed8f9a0657
   temporal-otb-benchmarks-cluster:Benchmark:
     Namespaces: 6
     ConcurrentWorkflows: 1800
@@ -49,14 +49,14 @@ config:
         Request: 8
       Memory:
         Request: 16Gi
-      CommitLogStorage: 1Gi
+      CommitLogStorage: 512Mi
       DataStorage: 512Gi
     Visibility:
       OpenSearch:
         MasterInstanceType: m5.large.search
         MasterInstanceCount: 3
         DataInstanceType: r6gd.2xlarge.search
-        DataInstanceCount: 9
+        DataInstanceCount: 3
         EngineVersion: OpenSearch_2.11
   temporal-otb-benchmarks-cluster:Temporal:
     Frontend:
