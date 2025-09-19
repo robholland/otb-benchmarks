@@ -63,8 +63,11 @@ export class VisibilityComponent extends pulumi.ComponentResource {
         const zoneCount = awsConfig.AvailabilityZones.length;
         const domain = new aws.opensearch.Domain(name, {
             clusterConfig: {
-                instanceType: config.InstanceType,
-                instanceCount: zoneCount,
+                dedicatedMasterEnabled: true,
+                dedicatedMasterType: config.MasterInstanceType,
+                dedicatedMasterCount: config.MasterInstanceCount,
+                instanceType: config.DataInstanceType,
+                instanceCount: config.DataInstanceCount,
                 zoneAwarenessEnabled: true,
                 zoneAwarenessConfig: {
                     availabilityZoneCount: zoneCount,
@@ -73,11 +76,6 @@ export class VisibilityComponent extends pulumi.ComponentResource {
             vpcOptions: {
                 subnetIds: awsConfig.PrivateSubnetIds,
                 securityGroupIds: [opensearchSecurityGroup.id],
-            },
-            ebsOptions: {
-                ebsEnabled: true,
-                volumeType: "gp3",
-                volumeSize: 100,
             },
             engineVersion: config.EngineVersion,
             accessPolicies: JSON.stringify({

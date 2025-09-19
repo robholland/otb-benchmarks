@@ -53,7 +53,10 @@ config:
       DataStorage: 512Gi
     Visibility:
       OpenSearch:
-        InstanceType: m5.large.search
+        MasterInstanceType: m5.large.search
+        MasterInstanceCount: 3
+        DataInstanceType: r6gd.2xlarge.search
+        DataInstanceCount: 9
         EngineVersion: OpenSearch_2.11
   temporal-otb-benchmarks-cluster:Temporal:
     Frontend:

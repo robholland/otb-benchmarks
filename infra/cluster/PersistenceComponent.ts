@@ -185,10 +185,10 @@ export class PersistenceComponent extends pulumi.ComponentResource {
                     { key: "dedicated", operator: "Equal", value: "cassandra", effect: "NoSchedule" },
                 ],
                 "livenessProbe": {
-                    "initialDelaySeconds": 30,
+                    "initialDelaySeconds": 120,
                 },
                 "readinessProbe": {
-                    "initialDelaySeconds": 30,
+                    "initialDelaySeconds": 120,
                 },
                 "cluster": {
                     "numTokens": 8,

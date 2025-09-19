@@ -44,16 +44,19 @@ config:
   temporal-otb-benchmarks-cluster:Persistence:
     Cassandra:
       NodeType: c5.2xlarge
-      NodeCount: 40
+      NodeCount: 60
       CPU:
         Request: 8
       Memory:
         Request: 16Gi
-      CommitLogStorage: 1Gi
-      DataStorage: 1Ti
+      CommitLogStorage: 512Mi
+      DataStorage: 512Gi
     Visibility:
       OpenSearch:
-        InstanceType: m5.large.search
+        MasterInstanceType: r6gd.2xlarge.search
+        MasterInstanceCount: 3
+        DataInstanceType: r6gd.2xlarge.search
+        DataInstanceCount: 9
         EngineVersion: OpenSearch_2.11
   temporal-otb-benchmarks-cluster:Temporal:
     Frontend:

@@ -52,7 +52,10 @@ export interface CassandraPersistenceConfig {
 }
 
 export interface OpenSearchConfig {
-  InstanceType: string;
+  MasterInstanceType: string;
+  MasterInstanceCount: number;
+  DataInstanceType: string;
+  DataInstanceCount: number;
   EngineVersion: string;
 }
 

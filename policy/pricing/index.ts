@@ -56,10 +56,18 @@ interface ResourceInfo {
     }>;
     openSearchInstances: Array<{
         name: string;
-        instanceType: string;
-        instanceCount: number;
+        masterInstanceType?: string;
+        masterInstanceCount?: number;
+        dataInstanceType?: string;
+        dataInstanceCount?: number;
+        // Legacy fields for backward compatibility
+        instanceType?: string;
+        instanceCount?: number;
         storageGB: number;
         engineVersion?: string;
+        masterPricePerHour?: number;
+        dataPricePerHour?: number;
+        // Legacy fields for backward compatibility
         pricePerHour?: number;
         storagePricePerGBMonth?: number;
     }>;
@@ -246,23 +254,50 @@ new PolicyPack("pricing", {
                         case "aws:opensearch/domain:Domain":
                             const openSearchDomain = resource.props;
                             const clusterConfig = openSearchDomain.clusterConfig || {};
-                            const osInstanceType = clusterConfig.instanceType || persistenceConfig?.Visibility?.OpenSearch?.InstanceType || "m5.large.search";
-                            const osInstanceCount = clusterConfig.instanceCount || (awsConfig?.AvailabilityZones?.length || 3);
                             const ebsOptions = openSearchDomain.ebsOptions || {};
                             const osStorageGB = ebsOptions.volumeSize || 100;
-                            
-                            const openSearchPrice = await pricingService.getOpenSearchPricing(osInstanceType, region);
                             const openSearchStoragePrice = await pricingService.getOpenSearchStoragePricing(region);
                             
-                            resourceInfo.openSearchInstances.push({
-                                name: resource.name,
-                                instanceType: osInstanceType,
-                                instanceCount: osInstanceCount,
-                                storageGB: osStorageGB,
-                                engineVersion: openSearchDomain.engineVersion,
-                                pricePerHour: openSearchPrice,
-                                storagePricePerGBMonth: openSearchStoragePrice
-                            });
+                            // Check if dedicated master is enabled (new master/data split format)
+                            if (clusterConfig.dedicatedMasterEnabled) {
+                                // New format with master/data split
+                                const masterInstanceType = clusterConfig.dedicatedMasterType || persistenceConfig?.Visibility?.OpenSearch?.MasterInstanceType || "m5.large.search";
+                                const masterInstanceCount = clusterConfig.dedicatedMasterCount || persistenceConfig?.Visibility?.OpenSearch?.MasterInstanceCount || 3;
+                                const dataInstanceType = clusterConfig.instanceType || persistenceConfig?.Visibility?.OpenSearch?.DataInstanceType || "r6gd.2xlarge.search";
+                                const dataInstanceCount = clusterConfig.instanceCount || persistenceConfig?.Visibility?.OpenSearch?.DataInstanceCount || (awsConfig?.AvailabilityZones?.length || 3);
+                                
+                                const masterPrice = await pricingService.getOpenSearchPricing(masterInstanceType, region);
+                                const dataPrice = await pricingService.getOpenSearchPricing(dataInstanceType, region);
+                                
+                                resourceInfo.openSearchInstances.push({
+                                    name: resource.name,
+                                    masterInstanceType,
+                                    masterInstanceCount,
+                                    dataInstanceType,
+                                    dataInstanceCount,
+                                    storageGB: osStorageGB,
+                                    engineVersion: openSearchDomain.engineVersion,
+                                    masterPricePerHour: masterPrice,
+                                    dataPricePerHour: dataPrice,
+                                    storagePricePerGBMonth: openSearchStoragePrice
+                                });
+                            } else {
+                                // Legacy format (single instance type) for backward compatibility
+                                const osInstanceType = clusterConfig.instanceType || "m5.large.search";
+                                const osInstanceCount = clusterConfig.instanceCount || (awsConfig?.AvailabilityZones?.length || 3);
+                                
+                                const openSearchPrice = await pricingService.getOpenSearchPricing(osInstanceType, region);
+                                
+                                resourceInfo.openSearchInstances.push({
+                                    name: resource.name,
+                                    instanceType: osInstanceType,
+                                    instanceCount: osInstanceCount,
+                                    storageGB: osStorageGB,
+                                    engineVersion: openSearchDomain.engineVersion,
+                                    pricePerHour: openSearchPrice,
+                                    storagePricePerGBMonth: openSearchStoragePrice
+                                });
+                            }
                             break;
                     }
                 }
@@ -395,8 +430,20 @@ new PolicyPack("pricing", {
                 }
                 
                 for (const openSearch of resourceInfo.openSearchInstances) {
-                    if (!openSearch.pricePerHour) {
-                        throw new Error(`Missing instance pricing data for OpenSearch domain ${openSearch.name} with instance type ${openSearch.instanceType}`);
+                    // Check pricing data based on master/data split or legacy format
+                    if (openSearch.masterInstanceType && openSearch.dataInstanceType) {
+                        // Master/data split format
+                        if (!openSearch.masterPricePerHour) {
+                            throw new Error(`Missing master instance pricing data for OpenSearch domain ${openSearch.name} with master instance type ${openSearch.masterInstanceType}`);
+                        }
+                        if (!openSearch.dataPricePerHour) {
+                            throw new Error(`Missing data instance pricing data for OpenSearch domain ${openSearch.name} with data instance type ${openSearch.dataInstanceType}`);
+                        }
+                    } else {
+                        // Legacy format
+                        if (!openSearch.pricePerHour) {
+                            throw new Error(`Missing instance pricing data for OpenSearch domain ${openSearch.name} with instance type ${openSearch.instanceType}`);
+                        }
                     }
                     if (!openSearch.storagePricePerGBMonth) {
                         throw new Error(`Missing storage pricing data for OpenSearch domain ${openSearch.name}`);
@@ -508,10 +555,26 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
     
     // OpenSearch costs
     totalMonthlyCost += info.openSearchInstances.reduce((sum, os) => {
-        if (!os.pricePerHour || !os.storagePricePerGBMonth) {
-            throw new Error(`Missing pricing data for OpenSearch domain ${os.name} in cost summary`);
+        if (!os.storagePricePerGBMonth) {
+            throw new Error(`Missing storage pricing data for OpenSearch domain ${os.name} in cost summary`);
         }
-        const instanceMonthlyPrice = os.pricePerHour * os.instanceCount * 24 * 30;
+        
+        let instanceMonthlyPrice = 0;
+        if (os.masterInstanceType && os.dataInstanceType) {
+            // Master/data split format
+            if (!os.masterPricePerHour || !os.dataPricePerHour) {
+                throw new Error(`Missing instance pricing data for OpenSearch domain ${os.name} in cost summary`);
+            }
+            instanceMonthlyPrice = (os.masterPricePerHour * (os.masterInstanceCount || 0) + 
+                                   os.dataPricePerHour * (os.dataInstanceCount || 0)) * 24 * 30;
+        } else {
+            // Legacy format
+            if (!os.pricePerHour) {
+                throw new Error(`Missing instance pricing data for OpenSearch domain ${os.name} in cost summary`);
+            }
+            instanceMonthlyPrice = os.pricePerHour * (os.instanceCount || 0) * 24 * 30;
+        }
+        
         const storageMonthlyPrice = os.storageGB * os.storagePricePerGBMonth;
         return sum + instanceMonthlyPrice + storageMonthlyPrice;
     }, 0);
@@ -654,20 +717,47 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
     // OpenSearch (for visibility when using Cassandra)
     if (info.openSearchInstances.length > 0) {
         md += `### OpenSearch\n`;
-        md += `| Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |\n`;
-        md += `|---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|\n`;
         
         for (const openSearch of info.openSearchInstances) {
-            if (!openSearch.pricePerHour || !openSearch.storagePricePerGBMonth) {
-                throw new Error(`Missing pricing data for OpenSearch domain ${openSearch.name}`);
+            if (!openSearch.storagePricePerGBMonth) {
+                throw new Error(`Missing storage pricing data for OpenSearch domain ${openSearch.name}`);
             }
             
-            const instancePricePerHour = openSearch.pricePerHour;
-            const instanceMonthlyPrice = instancePricePerHour * openSearch.instanceCount * 24 * 30;
             const storageMonthlyPrice = openSearch.storageGB * openSearch.storagePricePerGBMonth;
-            const totalMonthlyPrice = instanceMonthlyPrice + storageMonthlyPrice;
             
-            md += `| ${openSearch.instanceType} | ${openSearch.instanceCount} | ${openSearch.storageGB} GB | ${openSearch.storageGB * openSearch.instanceCount} GB | $${instanceMonthlyPrice.toFixed(2)} | $${storageMonthlyPrice.toFixed(2)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
+            // Handle master/data split format vs legacy format
+            if (openSearch.masterInstanceType && openSearch.dataInstanceType) {
+                // Master/data split format
+                if (!openSearch.masterPricePerHour || !openSearch.dataPricePerHour) {
+                    throw new Error(`Missing instance pricing data for OpenSearch domain ${openSearch.name}`);
+                }
+                
+                const masterMonthlyPrice = openSearch.masterPricePerHour * (openSearch.masterInstanceCount || 0) * 24 * 30;
+                const dataMonthlyPrice = openSearch.dataPricePerHour * (openSearch.dataInstanceCount || 0) * 24 * 30;
+                const totalInstanceMonthlyPrice = masterMonthlyPrice + dataMonthlyPrice;
+                const totalMonthlyPrice = totalInstanceMonthlyPrice + storageMonthlyPrice;
+                const totalInstanceCount = (openSearch.masterInstanceCount || 0) + (openSearch.dataInstanceCount || 0);
+                
+                md += `| Node Type | Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |\n`;
+                md += `|-----------|---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|\n`;
+                md += `| Master | ${openSearch.masterInstanceType} | ${openSearch.masterInstanceCount || 0} | ${openSearch.storageGB} GB | ${openSearch.storageGB * totalInstanceCount} GB | $${masterMonthlyPrice.toFixed(2)} | - | $${masterMonthlyPrice.toFixed(2)} |\n`;
+                md += `| Data | ${openSearch.dataInstanceType} | ${openSearch.dataInstanceCount || 0} | ${openSearch.storageGB} GB | - | $${dataMonthlyPrice.toFixed(2)} | $${storageMonthlyPrice.toFixed(2)} | $${(dataMonthlyPrice + storageMonthlyPrice).toFixed(2)} |\n`;
+                md += `| **Total** | - | **${totalInstanceCount}** | **${openSearch.storageGB} GB** | **${openSearch.storageGB * totalInstanceCount} GB** | **$${totalInstanceMonthlyPrice.toFixed(2)}** | **$${storageMonthlyPrice.toFixed(2)}** | **$${totalMonthlyPrice.toFixed(2)}** |\n`;
+            } else {
+                // Legacy format
+                if (!openSearch.pricePerHour) {
+                    throw new Error(`Missing instance pricing data for OpenSearch domain ${openSearch.name}`);
+                }
+                
+                const instancePricePerHour = openSearch.pricePerHour;
+                const instanceMonthlyPrice = instancePricePerHour * (openSearch.instanceCount || 0) * 24 * 30;
+                const totalMonthlyPrice = instanceMonthlyPrice + storageMonthlyPrice;
+                const totalStorage = openSearch.storageGB * (openSearch.instanceCount || 0);
+                
+                md += `| Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |\n`;
+                md += `|---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|\n`;
+                md += `| ${openSearch.instanceType} | ${openSearch.instanceCount || 0} | ${openSearch.storageGB} GB | ${totalStorage} GB | $${instanceMonthlyPrice.toFixed(2)} | $${storageMonthlyPrice.toFixed(2)} | $${totalMonthlyPrice.toFixed(2)} |\n`;
+            }
         }
         md += `\n`;
     }
@@ -697,7 +787,16 @@ function generateMarkdownReport(stackName: string, info: ResourceInfo): string {
     
     // OpenSearch costs
     totalPersistenceCost += info.openSearchInstances.reduce((sum, os) => {
-        return sum + (os.pricePerHour! * os.instanceCount * 24 * 30) + (os.storageGB * os.storagePricePerGBMonth!);
+        let instanceMonthlyPrice = 0;
+        if (os.masterInstanceType && os.dataInstanceType) {
+            // Master/data split format
+            instanceMonthlyPrice = (os.masterPricePerHour! * (os.masterInstanceCount || 0) + 
+                                   os.dataPricePerHour! * (os.dataInstanceCount || 0)) * 24 * 30;
+        } else {
+            // Legacy format
+            instanceMonthlyPrice = os.pricePerHour! * (os.instanceCount || 0) * 24 * 30;
+        }
+        return sum + instanceMonthlyPrice + (os.storageGB * os.storagePricePerGBMonth!);
     }, 0);
     
     if (totalPersistenceCost > 0) {
