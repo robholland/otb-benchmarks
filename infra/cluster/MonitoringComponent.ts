@@ -78,15 +78,14 @@ export class MonitoringComponent extends pulumi.ComponentResource {
             repositoryOpts: {
                 repo: "https://prometheus-community.github.io/helm-charts",
             },
-            values: {
+            values: role.arn.apply(roleArn => ({
                 prometheus: {
                     serviceAccount: {
                         create: true,
                         name: "prometheus-remote-write",
-                        // We perform this as a transformation, otherwise we block the chart being rendered during preview
-                        // annotations: {
-                        //     "eks.amazonaws.com/role-arn": role.arn,
-                        // },
+                        annotations: {
+                            "eks.amazonaws.com/role-arn": roleArn,
+                        },
                     },
                     prometheusSpec: {
                         podMonitorSelectorNilUsesHelmValues: false,
@@ -127,19 +126,10 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                         enabled: false,
                     }
                 },
-            },
+            })),
         }, { 
             parent: this,
             dependsOn: [this.namespace, role],
-            transformations: [
-                (obj: any) => {
-                    if (obj.kind === "ServiceAccount" && obj.metadata?.name === "prometheus-remote-write") {
-                        obj.metadata.annotations = obj.metadata.annotations || {};
-                        obj.metadata.annotations["eks.amazonaws.com/role-arn"] = role.arn;
-                    }
-                    return obj;
-                }
-            ],
         });
 
         // Add Prometheus Rules for benchmark monitoring

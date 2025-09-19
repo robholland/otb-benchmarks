@@ -14,7 +14,7 @@ config:
     RdsSubnetGroupName: "temporal-benchmark-rds-d034419"
     Role: BenchmarkClusterAdmin
     VpcId: "vpc-0f0ab8c917df6d422"
-    PrometheusId: ws-cc07bde8-10f1-4360-99a9-a5ed8f9a0657
+    PrometheusEndpoint: https://aps-workspaces.us-west-2.amazonaws.com/workspaces/ws-cc07bde8-10f1-4360-99a9-a5ed8f9a0657
   temporal-otb-benchmarks-cluster:Benchmark:
     Namespaces: 3
     ConcurrentWorkflows: 270

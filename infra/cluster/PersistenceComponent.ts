@@ -270,6 +270,12 @@ export class PersistenceComponent extends pulumi.ComponentResource {
                 user: "temporal",
                 password: "temporal",
                 replicationFactor: 3,
+                consistency: {
+                    default: {
+                        consistency: "quorom",
+                        serialConsistency: "serial",
+                    },
+                },
                 datacenter: 'dc1',
             }
         });
