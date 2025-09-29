@@ -17,7 +17,7 @@ config:
     PrometheusEndpoint: https://aps-workspaces.us-west-2.amazonaws.com/workspaces/ws-cc07bde8-10f1-4360-99a9-a5ed8f9a0657
   temporal-otb-benchmarks-cluster:Benchmark:
     Namespaces: 12
-    ConcurrentWorkflows: 5500
+    ConcurrentWorkflows: 5750
     Target: 30000
     Workers:
       Pods: 3
@@ -44,7 +44,7 @@ config:
   temporal-otb-benchmarks-cluster:Persistence:
     Cassandra:
       NodeType: c5.2xlarge
-      NodeCount: 60
+      NodeCount: 72
       CPU:
         Limit: 8
       Memory:

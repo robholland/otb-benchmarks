@@ -207,7 +207,7 @@ const benchmarkCharts = [...Array(benchmarkConfig.Namespaces)].map((_, i) => {
     i += 1;
     return new k8s.helm.v4.Chart(`benchmark-workers-${i}`, {
         chart: "oci://ghcr.io/temporalio/charts/benchmark-workers",
-        version: "0.6.2",
+        version: "0.7.2",
         namespace: benchmarkNamespace.metadata.name,
         name: `benchmark-workers-${i}`,
         values: {
@@ -236,7 +236,7 @@ const benchmarkCharts = [...Array(benchmarkConfig.Namespaces)].map((_, i) => {
             soakTest: {
                 enabled: true,
                 workflowType: "DSL",
-                workflowArgs: '[{"a": "Sleep", "i": {"SleepTimeInSeconds": 1}, "r": 3},{"c": [{"a": "Sleep", "i": {"SleepTimeInSeconds": 1}, "r": 3}]}]',
+                workflowArgs: '[{"a": "Sleep", "i": {"SleepTimeInSeconds": 1}, "p": 5120, "r": 3},{"c": [{"a": "Sleep", "i": {"SleepTimeInSeconds": 1}, "p": 5120, "r": 3}]}]',
                 replicaCount: benchmarkConfig.SoakTest.Pods,
                 concurrentWorkflows: Math.floor(benchmarkConfig.ConcurrentWorkflows / benchmarkConfig.Namespaces / benchmarkConfig.SoakTest.Pods),
                 resources: {

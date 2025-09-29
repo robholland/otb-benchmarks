@@ -3,7 +3,7 @@
 ## Summary
 
 ### 💰 Total Estimated Monthly Cost
-**$22752.74**
+**$36561.22**
 
 ### 🎯 Benchmark Target
 - **Target Throughput:** 30000 state transitions/second
@@ -19,8 +19,8 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |
 |------|--------------|------------|----------------|-------------|
-| cluster-worker | c5.xlarge | 8 | $0.1700 | $979.20 |
 | cluster-core | r5.xlarge | 3 | $0.2520 | $544.32 |
+| cluster-worker | c5.xlarge | 8 | $0.1700 | $979.20 |
 | cluster-temporal | c5.4xlarge | 16 | $0.6800 | $7833.60 |
 
 - **Total EKS Monthly Cost:** $9357.12
@@ -29,18 +29,20 @@
 ### Cassandra
 | Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Storage/Node | Storage Cost/Node/Month | Total Monthly Cost |
 |--------------|------------|-------------|----------------|----------------|--------------|-------------------------|--------------------|
-| c5.2xlarge | 40 | 8 | 16Gi | $0.3400 | 1025.0 GB | $82.00 | $13072.00 |
+| c5.2xlarge | 72 | 8 | 16Gi | $0.3400 | 512.5 GB | $41.00 | $20577.60 |
 
 **Storage Details:**
-- **Per Node:** 1 GB commit log + 1024 GB data storage (gp3)
-- **Total Cluster:** 41000 GB across 40 nodes
+- **Per Node:** 0.5 GB commit log + 512 GB data storage (gp3)
+- **Total Cluster:** 36900 GB across 72 nodes
 
 ### OpenSearch
-| Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |
-|---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|
-| m5.large.search | 3 | 100 GB | 300 GB | $306.72 | $16.90 | $323.62 |
+| Node Type | Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |
+|-----------|---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|
+| Master | r6gd.2xlarge.search | 3 | 100 GB | 1200 GB | $1652.40 | - | $1652.40 |
+| Data | r6gd.2xlarge.search | 9 | 100 GB | - | $4957.20 | $16.90 | $4974.10 |
+| **Total** | - | **12** | **100 GB** | **1200 GB** | **$6609.60** | **$16.90** | **$6626.50** |
 
-- **Total Persistence Monthly Cost:** $13395.62
+- **Total Persistence Monthly Cost:** $27204.10
 
 ## Temporal Services
 

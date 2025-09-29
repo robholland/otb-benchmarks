@@ -272,7 +272,7 @@ export class PersistenceComponent extends pulumi.ComponentResource {
                 replicationFactor: 3,
                 consistency: {
                     default: {
-                        consistency: "quorom",
+                        consistency: "quorum",
                         serialConsistency: "serial",
                     },
                 },
