@@ -460,15 +460,10 @@ function generateMarkdownReport(stackName, info) {
             if (ng.commitLogStorageGB && ng.dataStorageGB) {
                 storagePerNode = ng.commitLogStorageGB + ng.dataStorageGB;
             }
-            const instanceCores = getInstanceTypeCpuCores(ng.instanceType);
             const cpuRequest = ng.cpuRequest ? ng.cpuRequest.toString() : '-';
             const memoryRequest = ng.memoryRequest || '-';
             const storageDisplay = storagePerNode > 0 ? `${storagePerNode.toFixed(1)} GB` : '-';
-            // Show both instance cores and CPU request
-            const cpuDisplay = instanceCores > 0 ?
-                `${cpuRequest} (${instanceCores} cores available)` :
-                cpuRequest;
-            md += `| ${ng.instanceType} | ${ng.nodeCount} | ${cpuDisplay} | ${memoryRequest} | ${storageDisplay} |\n`;
+            md += `| ${ng.instanceType} | ${ng.nodeCount} | ${cpuRequest} | ${memoryRequest} | ${storageDisplay} |\n`;
         }
         md += `\n`;
         // Add storage details

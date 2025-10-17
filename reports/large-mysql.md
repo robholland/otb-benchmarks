@@ -23,8 +23,8 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Purpose |
 |------|--------------|------------|---------|
-| cluster-core | r5.xlarge | 3 | core |
 | cluster-worker | c5.xlarge | 3 | worker |
+| cluster-core | r5.xlarge | 3 | core |
 | cluster-temporal | c5.4xlarge | 4 | temporal |
 
 
@@ -37,12 +37,12 @@
 
 ## Temporal Services
 
-| Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory |
-|-----------|------|-------------------|----------------------|-----------|-------------|
-| Frontend  | 6    | 2               | 256Mi                | 12       | 1.50Gi     |
-| History   | 12    | 2               | 4.00Gi                | 24       | 48.00Gi     |
-| Matching  | 6    | 1               | 256Mi                | 6       | 1.50Gi     |
-| Worker    | 2    | 0.25               | 128Mi                | 0.5       | 256Mi     |
+| Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory | STS/Core |
+|-----------|------|-------------------|----------------------|-----------|--------------|----------|
+| Frontend  | 6    | 2               | 256Mi                | 12       | 1.50Gi     | 417    |
+| History   | 12    | 2               | 4.00Gi                | 24       | 48.00Gi     | 208    |
+| Matching  | 6    | 1               | 256Mi                | 6       | 1.50Gi     | 833    |
+| Worker    | 2    | 0.25               | 128Mi                | 0.5       | 256Mi     | 10000    |
 
 - **History Shards:** 1024
 

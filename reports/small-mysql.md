@@ -3,16 +3,16 @@
 ## Summary
 
 ### 🎯 Benchmark Target
-- **Target Throughput:** 500 state transitions/second
+- **Target Throughput:** 500 state transitions/second (sts)
 - **Namespaces:** 3
 
 ### 📊 Provisioning Ratios
 - **CPU Cores (Frontend + History + Matching):** 12 cores
-- **State Transitions per Core:** 42 transitions/sec/core
-- **Frontend:** 3 cores (167 transitions/sec/core)
-- **History:** 6 cores (83 transitions/sec/core)
-- **Matching:** 3 cores (167 transitions/sec/core)
-- **RDS Database:** 4 cores (125 transitions/sec/core)
+- **State Transitions per Core:** 42 sts/core
+- **Frontend:** 3 cores (167 sts/core)
+- **History:** 6 cores (83 sts/core)
+- **Matching:** 3 cores (167 sts/core)
+- **RDS Database:** 4 cores (125 sts/core)
 
 ---
 
@@ -24,8 +24,8 @@
 | Name | Instance Type | Node Count | Purpose |
 |------|--------------|------------|---------|
 | cluster-core | m5.2xlarge | 3 | core |
-| cluster-temporal | c5.2xlarge | 3 | temporal |
 | cluster-worker | c5.xlarge | 3 | worker |
+| cluster-temporal | c5.2xlarge | 3 | temporal |
 
 
 ## Persistence
@@ -37,12 +37,12 @@
 
 ## Temporal Services
 
-| Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory |
-|-----------|------|-------------------|----------------------|-----------|-------------|
-| Frontend  | 3    | 1               | 256Mi                | 3       | 768Mi     |
-| History   | 6    | 1               | 4.00Gi                | 6       | 24.00Gi     |
-| Matching  | 3    | 1               | 256Mi                | 3       | 768Mi     |
-| Worker    | 3    | 0.25               | 128Mi                | 0.75       | 384Mi     |
+| Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory | STS/Core |
+|-----------|------|-------------------|----------------------|-----------|--------------|----------|
+| Frontend  | 3    | 1               | 256Mi                | 3       | 768Mi     | 167    |
+| History   | 6    | 1               | 4.00Gi                | 6       | 24.00Gi     | 83    |
+| Matching  | 3    | 1               | 256Mi                | 3       | 768Mi     | 167    |
+| Worker    | 3    | 0.25               | 128Mi                | 0.75       | 384Mi     | 667    |
 
 - **History Shards:** 512
 

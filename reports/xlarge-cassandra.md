@@ -22,8 +22,8 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Purpose |
 |------|--------------|------------|---------|
-| cluster-core | r5.xlarge | 3 | core |
 | cluster-worker | c5.xlarge | 4 | worker |
+| cluster-core | r5.xlarge | 3 | core |
 | cluster-temporal | c5.4xlarge | 8 | temporal |
 
 
@@ -31,7 +31,7 @@
 ### Cassandra
 | Instance Type | Node Count | CPU Request | Memory Request | Storage/Node |
 |--------------|------------|-------------|----------------|--------------|
-| c5.2xlarge | 15 | - (8 cores available) | - | 512.5 GB |
+| c5.2xlarge | 15 | - | - | 512.5 GB |
 
 **Storage Details:**
 - **Per Node:** 0.5 GB commit log + 512 GB data storage (gp3)
@@ -49,12 +49,12 @@
 
 ## Temporal Services
 
-| Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory |
-|-----------|------|-------------------|----------------------|-----------|-------------|
-| Frontend  | 6    | 2               | 256Mi                | 12       | 1.50Gi     |
-| History   | 12    | 4               | 4.00Gi                | 48       | 48.00Gi     |
-| Matching  | 6    | 2               | 256Mi                | 12       | 1.50Gi     |
-| Worker    | 2    | 0.25               | 128Mi                | 0.5       | 256Mi     |
+| Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory | STS/Core |
+|-----------|------|-------------------|----------------------|-----------|--------------|----------|
+| Frontend  | 6    | 2               | 256Mi                | 12       | 1.50Gi     | 833    |
+| History   | 12    | 4               | 4.00Gi                | 48       | 48.00Gi     | 208    |
+| Matching  | 6    | 2               | 256Mi                | 12       | 1.50Gi     | 833    |
+| Worker    | 2    | 0.25               | 128Mi                | 0.5       | 256Mi     | 20000    |
 
 - **History Shards:** 2048
 

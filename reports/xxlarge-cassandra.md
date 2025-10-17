@@ -24,15 +24,15 @@
 | Name | Instance Type | Node Count | Purpose |
 |------|--------------|------------|---------|
 | cluster-worker | c5.xlarge | 8 | worker |
-| cluster-temporal | c5.4xlarge | 16 | temporal |
 | cluster-core | r5.xlarge | 3 | core |
+| cluster-temporal | c5.4xlarge | 16 | temporal |
 
 
 ## Persistence
 ### Cassandra
 | Instance Type | Node Count | CPU Request | Memory Request | Storage/Node |
 |--------------|------------|-------------|----------------|--------------|
-| c5.2xlarge | 72 | 8 (8 cores available) | 16Gi | 512.5 GB |
+| c5.2xlarge | 72 | 8 | 16Gi | 512.5 GB |
 
 **Storage Details:**
 - **Per Node:** 0.5 GB commit log + 512 GB data storage (gp3)
@@ -50,12 +50,12 @@
 
 ## Temporal Services
 
-| Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory |
-|-----------|------|-------------------|----------------------|-----------|-------------|
-| Frontend  | 15    | 2               | 256Mi                | 30       | 3.75Gi     |
-| History   | 12    | 8               | 8.00Gi                | 96       | 96.00Gi     |
-| Matching  | 9    | 4               | 256Mi                | 36       | 2.25Gi     |
-| Worker    | 2    | 0.25               | 128Mi                | 0.5       | 256Mi     |
+| Service   | Pods | CPU/Pod (Request) | Memory/Pod (Request) | Total CPU | Total Memory | STS/Core |
+|-----------|------|-------------------|----------------------|-----------|--------------|----------|
+| Frontend  | 15    | 2               | 256Mi                | 30       | 3.75Gi     | 1000    |
+| History   | 12    | 8               | 8.00Gi                | 96       | 96.00Gi     | 313    |
+| Matching  | 9    | 4               | 256Mi                | 36       | 2.25Gi     | 833    |
+| Worker    | 2    | 0.25               | 128Mi                | 0.5       | 256Mi     | 60000    |
 
 - **History Shards:** 4096
 
