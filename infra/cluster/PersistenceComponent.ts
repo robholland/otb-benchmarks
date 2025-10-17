@@ -26,7 +26,7 @@ export class PersistenceComponent extends pulumi.ComponentResource {
         }
 
         this.registerOutputs({
-            values: this.values
+            values: this.values,
         });
     }
 
@@ -259,6 +259,7 @@ export class PersistenceComponent extends pulumi.ComponentResource {
             dependsOn: [cassOperator, cassandraSecret],
             provider: cluster.provider,
             parent: this,
+            retainOnDelete: true,
         });
 
         return pulumi.output({

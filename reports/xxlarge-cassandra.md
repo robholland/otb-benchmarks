@@ -2,13 +2,17 @@
 
 ## Summary
 
-### 💰 Total Estimated Monthly Cost
-**$36561.22**
-
 ### 🎯 Benchmark Target
-- **Target Throughput:** 30000 state transitions/second
-
+- **Target Throughput:** 30000 state transitions/second (sts)
 - **Namespaces:** 12
+
+### 📊 Provisioning Ratios
+- **CPU Cores (Frontend + History + Matching):** 162 cores
+- **State Transitions per Core:** 185 sts/core
+- **Frontend:** 30 cores (1000 sts/core)
+- **History:** 96 cores (313 sts/core)
+- **Matching:** 36 cores (833 sts/core)
+- **Cassandra Database:** 576 cores (52 sts/core)
 
 ---
 
@@ -17,32 +21,32 @@
 - **Availability Zones:** us-west-2a, us-west-2b, us-west-2c
 
 ## EKS Node Groups
-| Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |
-|------|--------------|------------|----------------|-------------|
-| cluster-core | r5.xlarge | 3 | $0.2520 | $544.32 |
-| cluster-worker | c5.xlarge | 8 | $0.1700 | $979.20 |
-| cluster-temporal | c5.4xlarge | 16 | $0.6800 | $7833.60 |
+| Name | Instance Type | Node Count | Purpose |
+|------|--------------|------------|---------|
+| cluster-worker | c5.xlarge | 8 | worker |
+| cluster-temporal | c5.4xlarge | 16 | temporal |
+| cluster-core | r5.xlarge | 3 | core |
 
-- **Total EKS Monthly Cost:** $9357.12
 
 ## Persistence
 ### Cassandra
-| Instance Type | Node Count | CPU Request | Memory Request | Cost/Node/Hour | Storage/Node | Storage Cost/Node/Month | Total Monthly Cost |
-|--------------|------------|-------------|----------------|----------------|--------------|-------------------------|--------------------|
-| c5.2xlarge | 72 | 8 | 16Gi | $0.3400 | 512.5 GB | $41.00 | $20577.60 |
+| Instance Type | Node Count | CPU Request | Memory Request | Storage/Node |
+|--------------|------------|-------------|----------------|--------------|
+| c5.2xlarge | 72 | 8 (8 cores available) | 16Gi | 512.5 GB |
 
 **Storage Details:**
 - **Per Node:** 0.5 GB commit log + 512 GB data storage (gp3)
 - **Total Cluster:** 36900 GB across 72 nodes
 
 ### OpenSearch
-| Node Type | Instance Type | Instance Count | Storage/Instance | Total Storage | Instance Cost/Month | Storage Cost/Month | Total Cost/Month |
-|-----------|---------------|----------------|------------------|---------------|---------------------|--------------------|--------------------|
-| Master | r6gd.2xlarge.search | 3 | 100 GB | 1200 GB | $1652.40 | - | $1652.40 |
-| Data | r6gd.2xlarge.search | 9 | 100 GB | - | $4957.20 | $16.90 | $4974.10 |
-| **Total** | - | **12** | **100 GB** | **1200 GB** | **$6609.60** | **$16.90** | **$6626.50** |
+| Node Type | Instance Type | Instance Count |
+|-----------|---------------|----------------|
+| Master | r6gd.2xlarge.search | 3 |
+| Data | r6gd.2xlarge.search | 9 |
+| **Total** | - | **12** |
 
-- **Total Persistence Monthly Cost:** $27204.10
+- **Engine Version:** OpenSearch_2.11
+- **Storage:** NVMe (included with instance)
 
 ## Temporal Services
 

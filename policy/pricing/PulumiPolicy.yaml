@@ -1,4 +1,0 @@
-name: pricing
-description: A policy pack to estimate and report cloud infrastructure costs.
-runtime: nodejs
-version: 0.1.0 

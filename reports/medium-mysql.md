@@ -2,11 +2,17 @@
 
 ## Summary
 
-### 💰 Total Estimated Monthly Cost
-**$3431.20**
-
 ### 🎯 Benchmark Target
 - **Target Throughput:** 1500 state transitions/second
+- **Namespaces:** 3
+
+### 📊 Provisioning Ratios
+- **CPU Cores (Frontend + History + Matching):** 12 cores
+- **State Transitions per Core:** 125 transitions/sec/core
+- **Frontend:** 3 cores (500 transitions/sec/core)
+- **History:** 6 cores (250 transitions/sec/core)
+- **Matching:** 3 cores (500 transitions/sec/core)
+- **RDS Database:** 8 cores (188 transitions/sec/core)
 
 ---
 
@@ -15,22 +21,19 @@
 - **Availability Zones:** us-west-2a, us-west-2b, us-west-2c
 
 ## EKS Node Groups
-| Name | Instance Type | Node Count | Cost/Node/Hour | Monthly Cost |
-|------|--------------|------------|----------------|-------------|
-| cluster-temporal | c5.2xlarge | 3 | $0.3400 | $734.40 |
-| cluster-core | m5.2xlarge | 3 | $0.3840 | $829.44 |
-| cluster-worker | c5.xlarge | 3 | $0.1700 | $367.20 |
+| Name | Instance Type | Node Count | Purpose |
+|------|--------------|------------|---------|
+| cluster-temporal | c5.2xlarge | 3 | temporal |
+| cluster-core | m5.2xlarge | 3 | core |
+| cluster-worker | c5.xlarge | 3 | worker |
 
-- **Total EKS Monthly Cost:** $1931.04
 
-## RDS (Persistence)
+## Persistence
+### RDS
 - **Engine:** mysql 8.4.5
-- **Instance Type:** db.r5.2xlarge
+- **Instance Type:** db.r5.2xlarge (8 CPU cores)
 - **Multi-AZ:** Yes
-- **Storage:** 1024 GB *(configured for benchmark setup - real deployments would likely need much higher storage)*
-- **Instance Cost:** $1382.40/month
-- **Storage Cost:** $117.76/month
-- **Total Monthly Cost:** $1500.16
+- **Storage:** 1024 GB (gp3)
 
 ## Temporal Services
 
@@ -47,11 +50,5 @@
 
 | Pods | CPU (Request) | Memory (Request) | Workflow Pollers | Activity Pollers |
 |------|---------------|------------------|------------------|------------------|
-| 1 | 0.25 | 50Mi | 100 | 150 |
-
-## Benchmark Runner
-
-| Pods | CPU (Request) | Memory (Request) | Concurrent Workflows | Target |
-|------|---------------|------------------|--------------------- |--------|
-| 1 | 0.25 | 50Mi | 20 | 1500 |
+| 3 | 0.25 | 50Mi | 100 | 150 |
 

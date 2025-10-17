@@ -14,7 +14,6 @@
     "strictNullChecks": true
   },
   "files": [
-    "index.ts",
-    "pricing-data.ts"
+    "index.ts"
   ]
 } 

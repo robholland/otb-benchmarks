@@ -5,7 +5,7 @@ config:
     roleArn: arn:aws:iam::912773994842:role/BenchmarkClusterAdmin
   aws:defaultTags:
     tags:
-      cluster: small-mysql
+      cluster: small-cassandra
       clusterSize: small
   temporal-otb-benchmarks-cluster:AWS:
     Region: us-west-2
@@ -17,7 +17,7 @@ config:
     PrometheusEndpoint: https://aps-workspaces.us-west-2.amazonaws.com/workspaces/ws-cc07bde8-10f1-4360-99a9-a5ed8f9a0657
   temporal-otb-benchmarks-cluster:Benchmark:
     Namespaces: 3
-    ConcurrentWorkflows: 60
+    ConcurrentWorkflows: 100
     Target: 500
     Workers:
       Pods: 3
@@ -35,17 +35,29 @@ config:
         Request: 50Mi
   temporal-otb-benchmarks-cluster:Cluster:
     EKS:
-      NodeType: m5.2xlarge
+      NodeType: r5.xlarge
       NodeCount: 3
       TemporalNodeType: c5.2xlarge
       TemporalNodeCount: 3
-      WorkerNodeType: c5.xlarge
+      WorkerNodeType: c5.2xlarge
       WorkerNodeCount: 3
   temporal-otb-benchmarks-cluster:Persistence:
-    RDS:
-      Engine: mysql
-      EngineVersion: "8.4.5"
-      InstanceType: db.r5.xlarge
+    Cassandra:
+      NodeType: c5.2xlarge
+      NodeCount: 3
+      CPU:
+        Limit: 8
+      Memory:
+        Limit: 16Gi
+      CommitLogStorage: 256Mi
+      DataStorage: 128Gi
+    Visibility:
+      OpenSearch:
+        MasterInstanceType: r6gd.large.search
+        MasterInstanceCount: 3
+        DataInstanceType: r6gd.large.search
+        DataInstanceCount: 3
+        EngineVersion: OpenSearch_2.11
   temporal-otb-benchmarks-cluster:Temporal:
     Frontend:
       Pods: 3
@@ -55,7 +67,7 @@ config:
         Request: 256Mi
     History:
       Shards: 512
-      Pods: 6
+      Pods: 3
       CPU:
         Request: 1
       Memory:

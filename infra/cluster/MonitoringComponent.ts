@@ -79,6 +79,11 @@ export class MonitoringComponent extends pulumi.ComponentResource {
                 repo: "https://prometheus-community.github.io/helm-charts",
             },
             values: role.arn.apply(roleArn => ({
+                "kube-state-metrics": {
+                    metricLabelsAllowlist: [
+                        "nodes=[dedicated,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]",
+                    ]
+                },
                 prometheus: {
                     serviceAccount: {
                         create: true,

@@ -1,0 +1,4 @@
+name: summary
+description: A policy pack to discover and report cloud infrastructure resources.
+runtime: nodejs
+version: 0.1.0 
