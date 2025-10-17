@@ -437,7 +437,9 @@ function generateMarkdownReport(stackName, info) {
     else {
         md += `| Name | Instance Type | Node Count | Purpose |\n`;
         md += `|------|--------------|------------|---------|\n`;
-        for (const ng of info.nodeGroups) {
+        // Sort node groups by name for deterministic output
+        const sortedNodeGroups = [...info.nodeGroups].sort((a, b) => a.name.localeCompare(b.name));
+        for (const ng of sortedNodeGroups) {
             const purpose = ng.purpose || 'general';
             md += `| ${ng.name} | ${ng.instanceType} | ${ng.nodeCount} | ${purpose} |\n`;
         }

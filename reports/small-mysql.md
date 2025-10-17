@@ -24,8 +24,8 @@
 | Name | Instance Type | Node Count | Purpose |
 |------|--------------|------------|---------|
 | cluster-core | m5.2xlarge | 3 | core |
-| cluster-worker | c5.xlarge | 3 | worker |
 | cluster-temporal | c5.2xlarge | 3 | temporal |
+| cluster-worker | c5.xlarge | 3 | worker |
 
 
 ## Persistence

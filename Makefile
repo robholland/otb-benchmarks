@@ -18,7 +18,7 @@ all: $(REPORT_FILES)
 $(REPORTS_DIR)/%.md: infra/cluster/Pulumi.%.yaml
 	@echo "Generating report for stack: $*"
 	@mkdir -p $(REPORTS_DIR)
-	cd infra/cluster && pulumi -s $* --policy-pack ../../policy/summary preview
+	cd infra/cluster && pulumi -s $* --policy-pack ../../policy/summary preview --refresh=false
 	@if [ ! -f $@ ]; then echo "Warning: Report $@ was not generated"; fi
 
 # Individual stack targets for convenience

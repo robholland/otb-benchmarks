@@ -23,9 +23,9 @@
 ## EKS Node Groups
 | Name | Instance Type | Node Count | Purpose |
 |------|--------------|------------|---------|
-| cluster-worker | c5.xlarge | 3 | worker |
 | cluster-core | r5.xlarge | 3 | core |
 | cluster-temporal | c5.4xlarge | 4 | temporal |
+| cluster-worker | c5.xlarge | 3 | worker |
 
 
 ## Persistence
